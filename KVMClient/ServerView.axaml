@@ -1,0 +1,272 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
+             x:Class="KVMClient.ServerView"
+			 xmlns:ui="using:FluentAvalonia.UI.Controls"
+			xmlns:uip="using:FluentAvalonia.UI.Controls.Primitives"
+			xmlns:oxy="http://oxyplot.org/avalonia"
+			  xmlns:progRing="clr-namespace:AvaloniaProgressRing;assembly=AvaloniaProgressRing">
+	<ScrollViewer>
+		<Grid>
+
+			<Grid.RowDefinitions>
+				<RowDefinition Height="*"></RowDefinition>
+			</Grid.RowDefinitions>
+
+			<Grid x:Name="groupLoading" Grid.Row="0">
+				<WrapPanel Orientation="Vertical" HorizontalAlignment="Center"
+                           VerticalAlignment="Center">
+					<ui:ProgressRing x:Name="progressRing" IsIndeterminate="True" Width="80"
+                           Height="80" Grid.Row="0" Grid.RowSpan="2" IsVisible="True"></ui:ProgressRing>
+					<TextBlock x:Name="txtLoadingStatus">Loading...</TextBlock>
+				</WrapPanel>
+			</Grid>
+			<TabControl x:Name="tabContent" Grid.Row="0" IsVisible="False" SelectionChanged="TabControl_SelectionChanged">
+				<TabItem Header="Dashboard">
+					<Grid x:Name="gridContent" Grid.Row="1" Margin="8,8,8,8">
+						<Grid.RowDefinitions>
+							<RowDefinition Height="Auto"></RowDefinition>
+							<RowDefinition Height="Auto" MaxHeight="300"></RowDefinition>
+							<RowDefinition Height="Auto"></RowDefinition>
+						</Grid.RowDefinitions>
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="*"></ColumnDefinition>
+							<ColumnDefinition Width="*"></ColumnDefinition>
+							<ColumnDefinition Width="auto" MinWidth="200"></ColumnDefinition>
+						</Grid.ColumnDefinitions>
+
+						<Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Margin="5">
+							<Grid.ColumnDefinitions>
+								<ColumnDefinition Width="auto"></ColumnDefinition>
+								<ColumnDefinition Width="*"></ColumnDefinition>
+								<ColumnDefinition Width="auto"></ColumnDefinition>
+							</Grid.ColumnDefinitions>
+							<WrapPanel Orientation="Vertical" Grid.Column="0">
+								<TextBlock Theme="{StaticResource FontSizeSmall}" Foreground="Gray">Server name</TextBlock>
+								<TextBlock Theme="{StaticResource FontSizeLarge}" x:Name="txtTop" FontSize="20">Loading</TextBlock>
+							</WrapPanel>
+							<WrapPanel Orientation="Horizontal" Grid.Column="2">
+								<Button x:Name="btnPoweron" IsEnabled="False" Margin="5">Power On</Button>
+								<Button x:Name="btnPoweroff" IsEnabled="False" Margin="5">Power Off</Button>
+								<Button x:Name="btnReset" IsEnabled="False" Margin="5">Reset</Button>
+							</WrapPanel>
+						</Grid>
+
+						<!--Logs-->
+						<Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="5" Background="{DynamicResource ApplicationPageBackgroundThemeBrush}" BorderThickness="1,1,1,1" CornerRadius="10">
+							<Grid>
+								<Grid.RowDefinitions>
+									<RowDefinition Height="auto"/>
+									<RowDefinition Height="*"/>
+								</Grid.RowDefinitions>
+
+								<TextBlock FontSize="20" Grid.Row="0">Latest Logs</TextBlock>
+								<DataGrid Grid.Row="1" Height="150"></DataGrid>
+							</Grid>
+						</Border>
+
+						<!--VNC-->
+						<Border Grid.Row="2" Grid.Column="0" Margin="5" Background="{DynamicResource ApplicationPageBackgroundThemeBrush}" BorderThickness="1,1,1,1" CornerRadius="10">
+							<Grid>
+								<Grid.RowDefinitions>
+									<RowDefinition Height="auto"/>
+									<RowDefinition Height="*"/>
+								</Grid.RowDefinitions>
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="*"/>
+									<ColumnDefinition Width="auto"/>
+								</Grid.ColumnDefinitions>
+
+								<TextBlock FontSize="14" Grid.Row="0" Grid.Column="0">Remote Console</TextBlock>
+								<Button x:Name="btnRefreshPreview" Grid.Row="0" Grid.Column="1" Click="btnRefreshPreview_Click">Refresh</Button>
+								<Grid Grid.Row="1" Grid.ColumnSpan="2">
+									<Grid.RowDefinitions>
+										<RowDefinition Height="Auto"></RowDefinition>
+										<RowDefinition Height="Auto"></RowDefinition>
+										<RowDefinition Height="Auto"></RowDefinition>
+									</Grid.RowDefinitions>
+
+									<Image x:Name="VNCPreview" Grid.Row="0" Margin="0,0,0,8" Width="320" Height="256" IsVisible="True" Tapped="Preview_Tapped" Cursor="Hand"></Image>
+									<ui:ProgressRing x:Name="prgPreview" IsIndeterminate="True" Grid.Row="0" Width="50" Height="50"></ui:ProgressRing>
+
+								</Grid>
+							</Grid>
+						</Border>
+
+						<!--Power consumption-->
+						<Border Grid.Row="2" Grid.Column="1" Margin="5" Background="{DynamicResource ApplicationPageBackgroundThemeBrush}" BorderThickness="1,1,1,1" CornerRadius="10">
+							<Grid>
+								<Grid.RowDefinitions>
+									<RowDefinition Height="auto"/>
+									<RowDefinition Height="*"/>
+								</Grid.RowDefinitions>
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="*"/>
+									<ColumnDefinition Width="auto"/>
+								</Grid.ColumnDefinitions>
+
+								<TextBlock FontSize="14" Grid.Row="0" Grid.Column="0">Power consumption</TextBlock>
+
+								<oxy:Plot Grid.Row="1" Grid.ColumnSpan="2"
+               PlotMargins="50 0 0 0"
+               PlotAreaBorderColor="#999999">
+									<oxy:Plot.Series>
+										<oxy:AreaSeries
+											DataFieldX="Index"
+											DataFieldY="Value"
+											
+											Color="#fd6d00" />
+									</oxy:Plot.Series>
+								</oxy:Plot>
+							</Grid>
+						</Border>
+						<!--Info-->
+						<Border Grid.Row="2" Grid.Column="2" Margin="5" Background="{DynamicResource ApplicationPageBackgroundThemeBrush}" BorderThickness="1,1,1,1" CornerRadius="10">
+							<ScrollViewer>
+								<WrapPanel Orientation="Vertical" x:Name="MainWrapPanel">
+
+									<!--BMC Mac-->
+									<TextBlock Theme="{StaticResource FontSizeSmall}" Foreground="Gray">BMC MAC Address</TextBlock>
+									<SelectableTextBlock x:Name="lblBmcMac" Theme="{StaticResource FontSizeLarge}" FontSize="19">Loading</SelectableTextBlock>
+
+									<!--BMC Version-->
+									<SelectableTextBlock Theme="{StaticResource FontSizeSmall}" Foreground="Gray">BMC Version</SelectableTextBlock>
+									<WrapPanel Orientation="Horizontal">
+										<SelectableTextBlock x:Name="lblBmcFwVer" Theme="{StaticResource FontSizeLarge}" FontSize="19">Loading</SelectableTextBlock>
+										<SelectableTextBlock x:Name="lblBmcFwDate" Theme="{StaticResource FontSizeSmall}" Foreground="Gray" VerticalAlignment="Center" Padding="5">(1/1/1970)</SelectableTextBlock>
+									</WrapPanel>
+
+									<!--BIOS Version-->
+									<WrapPanel Orientation="Vertical" x:Name="groupBiosVer">
+										<SelectableTextBlock Theme="{StaticResource FontSizeSmall}" Foreground="Gray">BIOS Version</SelectableTextBlock>
+										<WrapPanel Orientation="Horizontal">
+											<SelectableTextBlock x:Name="lblBiosVer" Theme="{StaticResource FontSizeLarge}" FontSize="19">Loading</SelectableTextBlock>
+											<SelectableTextBlock x:Name="lblBiosDate" Theme="{StaticResource FontSizeSmall}" Foreground="Gray" VerticalAlignment="Center" Padding="5">(1/1/1970)</SelectableTextBlock>
+										</WrapPanel>
+									</WrapPanel>
+
+									<!--Board Info-->
+									<WrapPanel Orientation="Vertical">
+										<TextBlock Theme="{StaticResource FontSizeSmall}" Foreground="Gray">Board:</TextBlock>
+										<SelectableTextBlock x:Name="lblBoardInfo" Theme="{StaticResource FontSizeLarge}" FontSize="19">Loading</SelectableTextBlock>
+									</WrapPanel>
+								</WrapPanel>
+							</ScrollViewer>
+						</Border>
+
+
+						<!--<ui:SettingsExpander Grid.Row="0" Header="Basic Information" Description="Basic System information such as Firmware Version" Margin="0,0,0,8">
+						
+							<Grid>
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="*"></ColumnDefinition>
+									<ColumnDefinition Width="*"></ColumnDefinition>
+								</Grid.ColumnDefinitions>
+
+								<SelectableTextBlock x:Name="txtInfo1" Grid.Column="0">Loading</SelectableTextBlock>
+								<SelectableTextBlock x:Name="txtInfo2" Grid.Column="1" TextAlignment="Left">Loading</SelectableTextBlock>
+							</Grid>
+
+							
+						</ui:SettingsExpander>
+
+						<ui:SettingsExpander Grid.Row="1" Header="Power Control" Description="Remotely control the system power" Margin="0,0,0,8">
+							<ui:SettingsExpander.Footer>
+								<Grid>
+									<Grid.ColumnDefinitions>
+										<ColumnDefinition Width="Auto"></ColumnDefinition>
+										<ColumnDefinition Width="Auto"></ColumnDefinition>
+									</Grid.ColumnDefinitions>
+									<TextBlock x:Name="txtPower" Margin="0,0,16,0" Grid.Column="0" TextAlignment="Center"      HorizontalAlignment="Stretch"
+        VerticalAlignment="Center">ON</TextBlock>
+
+									<Button x:Name="btnPowerRefresh"
+                        Margin="0,0,16,0"
+                        Content="Refresh" Grid.Column="1" Click="btnPowerRefresh_Click"/>
+								</Grid>
+							</ui:SettingsExpander.Footer>
+
+							<Grid>
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="Auto"></ColumnDefinition>
+									<ColumnDefinition Width="Auto"></ColumnDefinition>
+									<ColumnDefinition Width="Auto"></ColumnDefinition>
+									<ColumnDefinition Width="Auto"></ColumnDefinition>
+								</Grid.ColumnDefinitions>
+								<Button x:Name="btnReboot" Grid.Column="0" Click="btnReboot_Click" Margin="0,0,8,0">Reboot</Button>
+								<Button x:Name="btnShutDown" Grid.Column="1"  Click="btnShutDown_Click" Margin="0,0,8,0">Shutdown</Button>
+								<Button x:Name="btnPowerOn" Grid.Column="2"  Click="btnPowerOn_Click" Margin="0,0,8,0">Power on</Button>
+							</Grid>
+						</ui:SettingsExpander>
+
+						
+						<ui:SettingsExpander Grid.Row="2" Header="Remote Control" Description="View and control this server" Margin="0,0,0,8">
+							<ui:SettingsExpander.Footer>
+								<Button
+                        Margin="0,0,16,0"
+                        Content="Open VNC" Grid.Column="1" Click="btnOpenVNC_Click"/>
+							</ui:SettingsExpander.Footer>
+							<Grid>
+								<Grid.RowDefinitions>
+									<RowDefinition Height="Auto"></RowDefinition>
+									<RowDefinition Height="Auto"></RowDefinition>
+									<RowDefinition Height="Auto"></RowDefinition>
+								</Grid.RowDefinitions>
+
+								<Image x:Name="VNCPreview" Grid.Row="0" Margin="0,0,0,8" Width="320" Height="256" IsVisible="False"></Image>
+								<ui:ProgressRing x:Name="prgPreview" IsIndeterminate="True" Grid.Row="0" Width="320" Height="256"></ui:ProgressRing>
+								<Button x:Name="btnOpenVNC"  Grid.Row="1" Margin="0,0,0,8" Width="150" Click="btnOpenVNC_Click">Open VNC</Button>
+								<Button x:Name="btnRefreshPreview"   Grid.Row="2" Margin="0,0,0,8" Click="btnRefreshPreview_Click" Width="150">Refresh Preview</Button>
+							</Grid>
+						</ui:SettingsExpander>-->
+					</Grid>
+				</TabItem>
+				<TabItem Header="Server Info" x:Name="hwInfoTab">
+					<SelectableTextBlock x:Name="txtHwInfo">Loading</SelectableTextBlock>
+				</TabItem>
+				<TabItem Header="Configuration">
+					<SelectableTextBlock>Todo!</SelectableTextBlock>
+				</TabItem>
+				<TabItem Header="Maintenance">
+					<Grid>
+						<Grid.RowDefinitions>
+							<RowDefinition Height="Auto"></RowDefinition>
+							<RowDefinition Height="Auto"></RowDefinition>
+						</Grid.RowDefinitions>
+						<ui:SettingsExpander Grid.Row="0" Header="Reset IPMI Device" Description="Reboots the entire IPMI server. This can fix connection issues and slowness." Margin="0,0,0,8">
+							<ui:SettingsExpander.Footer>
+								<Grid>
+									<Grid.ColumnDefinitions>
+										<ColumnDefinition Width="32"/>
+										<ColumnDefinition Width="250"/>
+									</Grid.ColumnDefinitions>
+									<ui:ProgressRing x:Name="prgIPMIReset" Width="32" Height="32" Grid.Column="0" IsIndeterminate="True" IsVisible="False"></ui:ProgressRing>
+									<Button x:Name="btnIPMIReset"
+                        Margin="0,0,16,0"
+                        Content="Reset IPMI Device" Grid.Column="1" Click="btnResetIPMI_Click"/>
+								</Grid>
+							</ui:SettingsExpander.Footer>
+						</ui:SettingsExpander>
+						<ui:SettingsExpander Grid.Row="1" Header="Reset iKVM" Description="This option resets virtual media, iKVM keyboard and mouse." Margin="0,0,0,8">
+							<ui:SettingsExpander.Footer>
+								<Grid>
+									<Grid.ColumnDefinitions>
+										<ColumnDefinition Width="32"/>
+										<ColumnDefinition Width="250"/>
+									</Grid.ColumnDefinitions>
+									<ui:ProgressRing x:Name="prgiKVMReset" Width="32" Height="32" Grid.Column="0" IsIndeterminate="True" IsVisible="False"></ui:ProgressRing>
+									<Button x:Name="btniKVMReset"
+                        Margin="0,0,16,0"
+                        Content="Reset iKVM" Grid.Column="1" Click="btnResetIKVM_Click"/>
+								</Grid>
+							</ui:SettingsExpander.Footer>
+						</ui:SettingsExpander>
+					</Grid>
+				</TabItem>
+			</TabControl>
+
+		</Grid>
+	</ScrollViewer>
+</UserControl>

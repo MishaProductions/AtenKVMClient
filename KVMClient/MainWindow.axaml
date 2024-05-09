@@ -1,0 +1,111 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+		xmlns:ui="using:FluentAvalonia.UI.Controls"
+		xmlns:uip="using:FluentAvalonia.UI.Controls.Primitives"
+        x:Class="KVMClient.MainWindow"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+		Title="Supermicro IPMI Client">
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="*" />
+		</Grid.RowDefinitions>
+
+		<!--<ui:CommandBar Grid.Row="0" IsOpen="True">
+			<ui:CommandBar.PrimaryCommands>
+				<ui:CommandBarButton IconSource="Add" Label="Add host" Click="AddHost_Click"/>
+				<ui:CommandBarButton x:Name="BtnModifyHost" IconSource="Setting" Label="Modify" Click="ModifyHost_Click" IsEnabled="False"/>
+				<ui:CommandBarButton x:Name="BtnRemoveHost" IconSource="Remove" Label="Remove host" Click="RemoveHost_Click" IsEnabled="False"/>
+			</ui:CommandBar.PrimaryCommands>
+		</ui:CommandBar>-->
+
+		<Grid Grid.Row="1">
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="200"/>
+				<ColumnDefinition Width="*" />
+			</Grid.ColumnDefinitions>
+
+			<Grid Grid.Column="0">
+				<Grid.RowDefinitions>
+					<RowDefinition Height="auto"></RowDefinition>
+					<RowDefinition Height="*"></RowDefinition>
+				</Grid.RowDefinitions>
+
+				<Grid Grid.Row="0" Background="{DynamicResource ApplicationPageBackgroundThemeBrush}">
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="auto"></ColumnDefinition>
+						<ColumnDefinition Width="*"></ColumnDefinition>
+						<ColumnDefinition Width="auto"></ColumnDefinition>
+					</Grid.ColumnDefinitions>
+
+					<TextBlock Grid.Column="0" TextAlignment="Center" VerticalAlignment="Center">KVMClient BETA 0.4A</TextBlock>
+					<Button Grid.Column="2" Click="AddHost_Click">+</Button>
+				</Grid>
+				<ScrollViewer Grid.Row="1">
+					
+					<ListBox x:Name="hosts" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.HorizontalScrollBarVisibility="Visible" >
+						<ListBox.Resources>
+							<!--Defines a context menu-->
+							<ContextMenu x:Key="MyElementMenu">
+								<MenuItem Header="Modify" Click="MenuModifyClick"/>
+								<MenuItem Header="Remove" Click="MenuRemoveClick"/>
+							</ContextMenu>
+						</ListBox.Resources>
+						<ListBox.Styles>
+							<!--Sets a context menu for each ListBoxItem in the current ListBox-->
+							<Style Selector="ListBoxItem">
+								<Setter Property="ContextMenu" Value="{StaticResource MyElementMenu}"/>
+							</Style>
+
+						</ListBox.Styles>
+					</ListBox>
+				</ScrollViewer>
+			</Grid>
+			<ui:Frame x:Name="mainFrame" Grid.Column="1"/>
+		</Grid>
+
+		<!--<ui:ContentDialog x:Name="WorkDialog" Grid.Row="0" Grid.RowSpan="3">
+			<Grid>
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto"></RowDefinition>
+					<RowDefinition Height="Auto"></RowDefinition>
+					<RowDefinition Height="Auto"></RowDefinition>
+					
+					<RowDefinition Height="Auto"></RowDefinition>
+				</Grid.RowDefinitions>
+
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="50"></ColumnDefinition>
+					<ColumnDefinition Width="5"></ColumnDefinition>
+					<ColumnDefinition Width="50"></ColumnDefinition>
+					<ColumnDefinition Width="5"></ColumnDefinition>
+					<ColumnDefinition Width="50"></ColumnDefinition>
+					<ColumnDefinition Width="5"></ColumnDefinition>
+					<ColumnDefinition Width="50"></ColumnDefinition>
+				</Grid.ColumnDefinitions>
+
+				<TextBlock Grid.Row="0" Grid.ColumnSpan="7">Enter the server IP Range:</TextBlock>
+				<TextBox x:Name="txtIpRangeStart1" Grid.Row="1" Grid.Column="0" Text="172" TextChanged="txtIP_TextChanged"></TextBox>
+				<TextBlock Grid.Row="1" Grid.Column="1" VerticalAlignment="Bottom">.</TextBlock>
+				<TextBox x:Name="txtIpRangeStart2" Grid.Row="1" Grid.Column="2" Text="81" TextChanged="txtIP_TextChanged"></TextBox>
+				<TextBlock Grid.Row="1" Grid.Column="3" VerticalAlignment="Bottom">.</TextBlock>
+				<TextBox x:Name="txtIpRangeStart3" Grid.Row="1" Grid.Column="4" Text="110" TextChanged="txtIP_TextChanged"></TextBox>
+				<TextBlock Grid.Row="1" Grid.Column="5" VerticalAlignment="Bottom">.</TextBlock>
+				<TextBox x:Name="txtIpRangeStart4" Grid.Row="1" Grid.Column="6" Text="5" TextChanged="txtIP_TextChanged"></TextBox>
+
+				<TextBlock Grid.Row="2" Grid.ColumnSpan="7">Through</TextBlock>
+
+				<TextBox x:Name="txtIpRangeEnd1" Grid.Row="3" Grid.Column="0" Text="172" TextChanged="txtIP_TextChanged"></TextBox>
+				<TextBlock Grid.Row="3" Grid.Column="1" VerticalAlignment="Bottom">.</TextBlock>
+				<TextBox x:Name="txtIpRangeEnd2" Grid.Row="3" Grid.Column="2" Text="81" TextChanged="txtIP_TextChanged"></TextBox>
+				<TextBlock Grid.Row="3" Grid.Column="3" VerticalAlignment="Bottom">.</TextBlock>
+				<TextBox x:Name="txtIpRangeEnd3" Grid.Row="3" Grid.Column="4" Text="110" TextChanged="txtIP_TextChanged"></TextBox>
+				<TextBlock Grid.Row="3" Grid.Column="5" VerticalAlignment="Bottom">.</TextBlock>
+				<TextBox x:Name="txtIpRangeEnd4" Grid.Row="3" Grid.Column="6" Text="255" TextChanged="txtIP_TextChanged"></TextBox>
+			</Grid>
+		</ui:ContentDialog>-->
+
+	</Grid>
+</Window>
