@@ -40,7 +40,6 @@ namespace KVMClient
         private int FramebufferHeight;
         private Thread? threadMain;
         private double MaxUpdateRate = 15;
-        private bool FrameUpdateInProgress = false;
         private VNCPixelFormat? FramebufferPixelFormat;
         private bool Connected = false;
         private bool VideoOnly = false;
@@ -52,10 +51,19 @@ namespace KVMClient
         private int bytes = 0;
         private bool IsAST24000 = false;
         private Ast2100Decoder ast2100Decoder = new Ast2100Decoder();
-
-        private byte[]? DisplayBuffer;
+        private long FrameStart = 0;
+        private long FrameEnd = 0;
         private bool useSSL = false;
         private int FPS = 0;
+        public VNCViewer()
+        {
+            Host = "";
+            Username = "";
+            Password = "";
+            IpmiClient = new IpmiUdpClient();
+            Framebuffer = new WriteableBitmap(new Avalonia.PixelSize(640, 480), new Avalonia.Vector(96.0, 96.0), PixelFormats.Rgba8888);
+            DisplayImage.Source = Framebuffer;
+        }
         public unsafe VNCViewer(ServerDef info, IpmiUdpClient client)
         {
             InitializeComponent();
@@ -190,14 +198,12 @@ namespace KVMClient
             //1: share desktop, 0: take ownership
             this.c.SendByte((byte)(1));
 
-            // lblStatus.Text = "Configuring the desktop";
+            // setup initial framebuffer
             FramebufferHeight = this.c.ReceiveUInt16BE();
-
             FramebufferWidth = this.c.ReceiveUInt16BE();
             VncStream.SanityCheck(FramebufferWidth > 0 && FramebufferWidth < 0x8000);
             VncStream.SanityCheck(FramebufferHeight > 0 && FramebufferHeight < 0x8000);
-            //  prgLogin.Value = 4;
-            ResizeDisplay();
+            ResizeFB(FramebufferWidth, FramebufferHeight);
 
             try
             {
@@ -243,7 +249,6 @@ namespace KVMClient
                 VncEncoding.Raw,
                 //VncEncoding.ATEN,
                 VncEncoding.PseudoDesktopSize,
-
             };
 
             this.c.Send(new[] { (byte)2, (byte)0 });
@@ -315,46 +320,12 @@ namespace KVMClient
             {
                 types.Add((AuthenticationMethod)this.c.ReceiveByte());
             }
-            //prgLogin.Value = 2;
+
             if (types.Contains(AuthenticationMethod.SuperMicro))
             {
                 this.c.SendByte((byte)AuthenticationMethod.SuperMicro);
 
-                if (IsAST24000)
-                {
-                    // And now for something completely different... in newer Supermicro boards
-                    // they replaced all the tiny auth code with something called "insyde" auth.
-                    // We can't read anything from the socket before we handle this, as we need to pull
-                    // 24 bytes of a challenge off the wire.
-                    DoInsydeAuth();
-                }
-                else
-                {
-                    _ = (uint)this.c.ReceiveUInt32BE2(); //Number of tunnels or something
-
-                    var username = Username;
-                    var password = Password;
-
-
-                    c.Receive(4);
-                    c.Receive(16);
-
-                    // TODO: x11 have different auth
-                    string blockUsername = username;
-                    for (int i = 0; i < 24 - username.Length; i++)
-                    {
-                        blockUsername += "\x00";
-                    }
-
-                    string blockPassword = password;
-                    for (int i = 0; i < 24 - password.Length; i++)
-                    {
-                        blockPassword += "\x00";
-                    }
-
-
-                    c.SendString(blockUsername + blockPassword);
-                }
+                DoInsydeAuth();
 
                 try
                 {
@@ -446,37 +417,45 @@ namespace KVMClient
             }
         }
 
-        private ResponseType HandleResponse()
+        private void HandleResponse()
         {
             try
             {
                 if (client.Available == 0)
                 {
-                    return ResponseType.Bell;
+                    return;
                 }
             }
             catch
             {
-                return ResponseType.Bell;
+                return;
             }
-            ResponseType command;
-            if (numRects > 0 && !IsAST24000)
-            {
-                command = ResponseType.FramebufferUpdate;
-            }
-            else
-            {
-                command = (ResponseType)this.c.ReceiveByte();
-                //   if (command != ResponseType.FramebufferUpdate)
-                Console.WriteLine("Got command: " + command);
-            }
+            ResponseType command = (ResponseType)this.c.ReceiveByte();
 
             switch (command)
             {
                 case ResponseType.FramebufferUpdate:
+                    if (FrameStart == 0)
+                    {
+                        FrameStart = DateTime.Now.Ticks;
+                    }
+                    else
+                    {
+                        FrameEnd = DateTime.Now.Ticks;
+                    }
                     if (HandleFramebufferUpdate())
                     {
-                        SendUpdateRequests(GetCleanDirtyReset(), FramebufferWidth, FramebufferHeight);
+                        SendFramebufferUpdateRequest(true);
+                      //  SendUpdateRequests(GetCleanDirtyReset(), FramebufferWidth, FramebufferHeight);
+                    }
+
+                    if (FrameStart != 0 && FrameEnd != 0)
+                    {
+                        var s = TimeSpan.FromTicks(FrameEnd) - TimeSpan.FromTicks(FrameStart);
+                        FPS = (int)s.TotalSeconds;
+                        UpdateTitle();
+                        FrameStart = 0;
+                        FrameEnd = 0;
                     }
 
                     break;
@@ -498,11 +477,10 @@ namespace KVMClient
                     break;
                 case ResponseType.ATENFrontGroundEvent:
                     c.Receive(20);
-                    return command;
+                    break;
 
 
                 case ResponseType.ATENSessionMessage:
-
                     var count = c.ReceiveUInt32BE(); // u32
                     var tmp = c.Receive(4); // u32
 
@@ -514,13 +492,11 @@ namespace KVMClient
 
                     HandleIKVMMessage(ctrl_code, count, cMsg);
 
-                    return command;
+                    break;
                 default:
                     Debug.WriteLine("Command not implemented: " + (int)command);
-                    return command;
+                    break;
             }
-
-            return command;
         }
         private RectInfo _cleanRect = new RectInfo(0, 0, -1, -1);
         private CleanDirty GetCleanDirtyReset()
@@ -677,125 +653,101 @@ namespace KVMClient
 
         private bool HandleFramebufferUpdate()
         {
-            FrameUpdateInProgress = true;
-
             bool ret = true;
 
-            byte padding = 0;
-            if (numRects == 0)
+
+            // This is always read, which is not what noVNC does.
+            byte padding = c.ReceiveByte(); // padding
+            numRects = c.ReceiveUInt16BE();
+            bytes = 0;
+
+            //if (FrameStart != 0)
+            //{
+            //    var duration = DateTime.Now.Ticks - FrameStart;
+            //    FPS = (int)TimeSpan.FromTicks(duration).TotalSeconds;
+            //    UpdateTitle();
+            //    FrameStart = DateTime.Now.Ticks;
+            //}
+            //else
+            //{
+            //    FrameStart = DateTime.Now.Ticks;
+            //}
+
+
+            if (bytes == 0)
             {
-                padding = c.ReceiveByte(); // padding
-                numRects = c.ReceiveUInt16BE();
-                bytes = 0;
+                var r = this.c.ReceiveRectangle();
+                VncEncoding encoding = (VncEncoding)this.c.ReceiveUInt32BE();
+                int x = r.X, y = r.Y, w = r.Width, h = r.Height;
+
+                if (r.X != 0 || r.Y != 0)
+                {
+                    throw new Exception("Unexpected start x,y,w,h values: "+r.ToString()+". Typically, X and Y should be 0");
+                }
+
+
+                // HERMON uses 0x00 even when it is meant to be 0x59
+                if (encoding == 0)
+                {
+                    encoding = VncEncoding.AtenHermon;
+                }
+
+                switch (encoding)
+                {
+                    case VncEncoding.AtenHermon:
+                        ret = HandleHermonEncoding(h, w, x, y, 2);
+                        break;
+                    case VncEncoding.AtenAST2100:
+                        HandleATENAst2100Encoding(h, w, x, y, 2);
+                        break;
+                    default:
+                        throw new Exception("Unsupported encoding.");
+                }
             }
 
-            if (FrameStart != 0)
+            return ret;
+        }
+
+        private unsafe bool HandleHermonEncoding(int h, int w, int x, int y, int bpp)
+        {
+            var txtmode = (int)this.c.ReceiveUInt32BE();
+            aten_len = (int)this.c.ReceiveUInt32BE();
+
+            if ((short)w <= 0 && (short)h <= 0)
             {
-                var duration = DateTime.Now.Ticks - FrameStart;
-                FPS = (int)TimeSpan.FromTicks(duration).TotalSeconds;
+                Debug.WriteLine("[WARN] AMI screen is probably OFF");
+                ResizeFB(640, 480);
+
+                // Required to recieve further updates
+                FramebufferWidth = -640;
+                FramebufferHeight = -480;
+                spamUpdateRequests = true;
+                HasVideoSignal = false;
+
                 UpdateTitle();
-                FrameStart = DateTime.Now.Ticks;
+
+                aten_len = 0;
+
+                return false;
             }
             else
             {
-                FrameStart = DateTime.Now.Ticks;
-            }
-
-            while (numRects > 0 || IsAST24000)
-            {
-                if (bytes == 0)
+                spamUpdateRequests = false;
+                if (!HasVideoSignal)
                 {
-                    var r = this.c.ReceiveRectangle();
-                    int x = r.X, y = r.Y, w = r.Width, h = r.Height;
-
-                    FramebufferWidth = r.Width;
-                    FramebufferHeight = r.Height;
-
-                    int fbW = this.FramebufferWidth, fbH = this.FramebufferHeight, bpp = this.FramebufferPixelFormat.BitsPerPixel;
-
-                    VncEncoding encoding = (VncEncoding)this.c.ReceiveUInt32BE();
-
-                    // HERMON uses 0x00 even when it is meant to be 0x59
-                    if (encoding == 0)
-                    {
-                        encoding = VncEncoding.AtenHermon;
-                    }
-
-                    switch (encoding)
-                    {
-                        case VncEncoding.AtenHermon:
-                            ret = HandleHermonEncoding(h, w, x, y, 2);
-                            break;
-                        case VncEncoding.AtenAST2100:
-                            HandleATENAst2100Encoding(h, w, x, y, 2);
-                            break;
-                            break;
-                        default:
-                            throw new Exception("Unsupported encoding.");
-                    }
-                }
-            }
-            FrameUpdateInProgress = false;
-
-            if (!ret)
-            {
-                ;
-            }
-            return ret;
-        }
-        private long FrameStart = 0;
-        private unsafe bool HandleHermonEncoding(int h, int w, int x, int y, int bpp)
-        {
-            if (DisplayBuffer == null && h != 65056 && w != 64896)
-            {
-                DisplayBuffer = new byte[h * w * 4];
-            }
-
-
-
-            if (aten_len == -1)
-            {
-                var txtmode = (int)this.c.ReceiveUInt32BE();
-                aten_len = (int)this.c.ReceiveUInt32BE();
-
-                if (aten_len == 0)
-                {
-                    Debug.WriteLine("[WARN] AMI screen is probably OFF");
-                    ResizeFB(640, 480);
-
-                    // Required to recieve further updates
-                    FramebufferWidth = -640;
-                    FramebufferHeight = -480;
-                    spamUpdateRequests = true;
-                    HasVideoSignal = false;
-
+                    HasVideoSignal = true;
                     UpdateTitle();
-
-                    if (numRects == 1)
-                    {
-                        //    var xx = c.Receive(4); // tODO: why
-                    }
-                    aten_len = 0;
-
-                    return false;
-                }
-                else
-                {
-                    if (!HasVideoSignal)
-                    {
-                        HasVideoSignal = true;
-                        UpdateTitle();
-                    }
-                }
-
-                if (h != Framebuffer.PixelSize.Height | w != Framebuffer.PixelSize.Width)
-                {
-                    ResizeFB(w, h);
-                    ResizeDisplay();
                 }
             }
 
-            if (aten_type == -1)
+
+
+            if (h != Framebuffer.PixelSize.Height | w != Framebuffer.PixelSize.Width)
+            {
+                ResizeFB(w, h);
+            }
+
+            //if (aten_type == -1) // TODO: Is this needed?
             {
                 aten_type = this.c.ReceiveByte();
                 c.Receive(1);
@@ -917,18 +869,21 @@ namespace KVMClient
 
         private void ResizeFB(int w, int h)
         {
-            Debug.WriteLine("framebuffer resize: " + w + "," + h);
-
-            FramebufferHeight = h;
-            FramebufferWidth = w;
-            Dispatcher.UIThread.InvokeAsync(() =>
+            if (FramebufferWidth != w || FramebufferHeight != h)
             {
-                this.Framebuffer = new WriteableBitmap(new Avalonia.PixelSize(w, h), new Avalonia.Vector(96.0, 96.0), PixelFormats.Rgba8888);
-                DisplayImage.Source = Framebuffer;
+                Debug.WriteLine("framebuffer resize: " + w + "," + h);
 
-                // force redraw of entire screen as creating bitmap does not preserve pixels
-                // this._cleanRect = new RectInfo(0, 0, -1, -1);
-            });
+                FramebufferHeight = h;
+                FramebufferWidth = w;
+                Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    this.Framebuffer = new WriteableBitmap(new Avalonia.PixelSize(w, h), new Avalonia.Vector(96.0, 96.0), PixelFormats.Rgba8888);
+                    DisplayImage.Source = Framebuffer;
+
+                    // force redraw of entire screen as creating bitmap does not preserve pixels
+                    this._cleanRect = new RectInfo(0, 0, -1, -1);
+                });
+            }
         }
 
         private unsafe void DrawImageToBuffer(byte[] sourceBytes, ILockedFramebuffer destination, int sourceWidth, int sourceHeight, int destinationX, int destinationY)
@@ -973,7 +928,7 @@ namespace KVMClient
         }
 
 
-        private unsafe void HandleATENAst2100Encoding(int h, int w, int x, int y, int bpp)
+        private unsafe bool HandleATENAst2100Encoding(int h, int w, int x, int y, int bpp)
         {
             //if (DisplayBuffer == null)
             //{
@@ -1040,6 +995,7 @@ namespace KVMClient
             //}
 
             //ast2100Decoder.Decode(data);
+            return true;
         }
 
 
@@ -1201,18 +1157,6 @@ namespace KVMClient
 
                 // MessageBox.Show(ex.ToString());
             }
-        }
-        private void ResizeDisplay()
-        {
-            //if (this.InvokeRequired)
-            //{
-            //    this.Invoke((MethodInvoker)delegate () { ResizeDisplay(); });
-            //}
-            //else
-            //{
-            //    this.Size = new Size(FramebufferWidth + 2, FramebufferHeight + statusStrip1.Height + menuStrip1.Height);
-            //    lblRes.Text = $"{FramebufferWidth}x{FramebufferHeight}";
-            //}
         }
         private enum ResponseType : byte
         {
