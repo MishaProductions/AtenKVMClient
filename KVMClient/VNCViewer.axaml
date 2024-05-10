@@ -16,15 +16,15 @@ xmlns:uip="using:FluentAvalonia.UI.Controls.Primitives">
 		<Menu Grid.Row="0" x:Name="menuControl" >
 			<Menu.KeyBindings></Menu.KeyBindings>
 			<Menu.Items>
-				<MenuItem Header="Power">
+				<MenuItem Header="Power" Focusable="False">
 					<MenuItem Header="Force shutdown" Click="ImmediateShutdown_Click"/>
 					<MenuItem Header="Orderly shutdown"  Click="ACPIShutdown_Click"/>
 					<MenuItem Header="Power on" Click="Poweron_Click"/>
 					<MenuItem Header="Power cycle"  Click="PowerCycle_Click"/>
 				</MenuItem>
-				<MenuItem Header="Virtual Media"></MenuItem>
-				<MenuItem Header="Users"></MenuItem>
-				<MenuItem Header="Exit" Click="Exit_Click"></MenuItem>
+				<MenuItem Header="Virtual Media"  Focusable="False"></MenuItem>
+				<MenuItem Header="Users" Focusable="False"></MenuItem>
+				<MenuItem Header="Exit" Click="Exit_Click"  Focusable="False"></MenuItem>
 			</Menu.Items>
 		</Menu>
 		<ScrollViewer Grid.Row="1">

@@ -1,3 +1,7 @@
+/*
+    Note: most code in here is based off of https://github.com/kelleyk/noVNC but with
+          fixes to allow "no signal", SSL, power control, users, etc to work properly.
+*/
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media.Imaging;
@@ -7,17 +11,13 @@ using FluentAvalonia.UI.Controls;
 using KVMClient.Core;
 using KVMClient.Core.IPMI.UDP;
 using KVMClient.Core.VNC;
-using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Net.Security;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -55,6 +55,8 @@ namespace KVMClient
         private long FrameEnd = 0;
         private bool useSSL = false;
         private int FPS = 0;
+        private RectInfo _cleanRect = new RectInfo(0, 0, -1, -1);
+        private bool spamUpdateRequests = false;
         public VNCViewer()
         {
             Host = "";
@@ -155,6 +157,11 @@ namespace KVMClient
                         ephemeral.Dispose();
                     }
 
+                    var cb = new RemoteCertificateValidationCallback(bool (object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors) =>
+                    {
+                        return true;
+                    });
+
                     await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions()
                     {
                         TargetHost = Host,
@@ -163,8 +170,8 @@ namespace KVMClient
                         {
                             cert
                         },
-                        RemoteCertificateValidationCallback = ValidateCert
-                    });
+                        RemoteCertificateValidationCallback = cb
+                    }); ;
 
                     useSSL = true;
                     Title = "iKVM viewer (SSL) - Connecting";
@@ -178,6 +185,8 @@ namespace KVMClient
                 }
             }
 
+            Title = "iKVM viewer - negotiating version";
+
             if (!NegotiateVersion())
             {
                 await new ContentDialog() { Content = "Connection to " + Host + ":5900 failed: as the following VNC version is not supported: " + serverVersion, PrimaryButtonText = "OK" }.ShowAsync(this);
@@ -186,11 +195,14 @@ namespace KVMClient
             }
 
             #region Authentication
+            Title = "iKVM viewer - authenticating";
 
             if (!await DoAuthentication())
             {
                 return;
             }
+
+            Title = "iKVM viewer - reading framebuffer info";
 
             //1: share desktop, 0: take ownership
             this.c.SendByte((byte)(1));
@@ -211,7 +223,7 @@ namespace KVMClient
                 await new ContentDialog() { Content = "Connection to " + Host + ":5900 failed: as the server has sent an invaild pixel format.", PrimaryButtonText = "OK" }.ShowAsync();
                 return;
             }
-
+            Title = "iKVM viewer - reading server info";
             ServerName = this.c.ReceiveString();
 
             var sessionID = this.c.Receive(8); // Unknown
@@ -286,7 +298,17 @@ namespace KVMClient
                 }
             }
         }
-
+        private bool NegotiateVersion()
+        {
+            this.serverVersion = this.c.ReceiveVersion();
+            Console.WriteLine("VNC Version: " + serverVersion);
+            if (serverVersion == new Version(55, 8))
+            {
+                IsAST24000 = true;
+            }
+            this.c.SendVersion(serverVersion);
+            return true;
+        }
         private async Task<bool> DoAuthentication()
         {
             int count;
@@ -346,7 +368,6 @@ namespace KVMClient
 
             return true;
         }
-
         private void DoInsydeAuth()
         {
             int definedAuthLen = 24;
@@ -383,19 +404,12 @@ namespace KVMClient
             c.Send(pw);
             c.Flush();
         }
-
-        private bool ValidateCert(object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
-        {
-            return true;
-        }
-        private bool spamUpdateRequests = false;
         private void ThreadMain()
         {
             try
             {
                 while (true && c.isOpen)
                 {
-                    //if (!FrameUpdateInProgress)
                     this.HandleResponse();
                 }
             }
@@ -409,9 +423,11 @@ namespace KVMClient
                 });
             }
         }
-
+        #region Message handling
         private void HandleResponse()
         {
+            if (!c.isOpen)
+                return;
             try
             {
                 if (client.Available == 0)
@@ -423,11 +439,11 @@ namespace KVMClient
             {
                 return;
             }
-            ResponseType command = (ResponseType)this.c.ReceiveByte();
+            RFBMessageType command = (RFBMessageType)this.c.ReceiveByte();
 
             switch (command)
             {
-                case ResponseType.FramebufferUpdate:
+                case RFBMessageType.FramebufferUpdate:
                     if (FrameStart == 0)
                     {
                         FrameStart = DateTime.Now.Ticks;
@@ -436,10 +452,11 @@ namespace KVMClient
                     {
                         FrameEnd = DateTime.Now.Ticks;
                     }
+
                     if (HandleFramebufferUpdate())
                     {
                         SendFramebufferUpdateRequest(true);
-                      //  SendUpdateRequests(GetCleanDirtyReset(), FramebufferWidth, FramebufferHeight);
+                        //SendUpdateRequests(GetCleanDirtyReset(), FramebufferWidth, FramebufferHeight);
                     }
 
                     if (FrameStart != 0 && FrameEnd != 0)
@@ -452,7 +469,7 @@ namespace KVMClient
                     }
 
                     break;
-                case ResponseType.SetColorMapEntries:
+                case RFBMessageType.SetColorMapEntries:
                     c.ReceiveByte(); //padding
 
                     var firstColor = c.ReceiveUInt16BE();
@@ -468,12 +485,12 @@ namespace KVMClient
                     }
 
                     break;
-                case ResponseType.ATENFrontGroundEvent:
+                case RFBMessageType.ATENFrontGroundEvent:
                     c.Receive(20);
                     break;
 
 
-                case ResponseType.ATENSessionMessage:
+                case RFBMessageType.ATENSessionMessage:
                     var count = c.ReceiveUInt32BE(); // u32
                     var tmp = c.Receive(4); // u32
 
@@ -491,70 +508,7 @@ namespace KVMClient
                     break;
             }
         }
-        private RectInfo _cleanRect = new RectInfo(0, 0, -1, -1);
-        private CleanDirty GetCleanDirtyReset()
-        {
-            BoxInfo vp = new BoxInfo(0, 0, FramebufferWidth, FramebufferHeight);
-            RectInfo cr = _cleanRect;
-
-            BoxInfo cleanBox = new BoxInfo(cr.x1, cr.y1, cr.x2 - cr.x1 + 1, cr.y2 - cr.y1 + 1);
-            List<BoxInfo> DirtyBoxes = new List<BoxInfo>();
-
-            if (cr.x1 >= cr.x2 || cr.y1 >= cr.y2)
-            {
-                DirtyBoxes.Add(new BoxInfo(vp.x, vp.y, vp.w, vp.h));
-            }
-            else
-            {
-                var vx2 = vp.x + vp.w - 1;
-                var vy2 = vp.y + vp.h - 1;
-
-                if (vp.x < cr.x1)
-                {
-                    DirtyBoxes.Add(new BoxInfo(vp.x, vp.y, cr.x1 - vp.x, vp.h));
-                }
-                if (vx2 > cr.x2)
-                {
-                    DirtyBoxes.Add(new BoxInfo(cr.x2 + 1, vp.y, vx2 - cr.x2, vp.h));
-                }
-                if (vp.y < cr.y1)
-                {
-                    DirtyBoxes.Add(new BoxInfo(cr.x1, vp.y, cr.x2 - cr.x1 + 1, cr.y1 - vp.y));
-                }
-                if (vy2 > cr.y2)
-                {
-                    DirtyBoxes.Add(new BoxInfo(cr.x1, cr.y2 + 1, cr.x2 - cr.x1 + 1, vy2 - cr.y2));
-                }
-            }
-
-            _cleanRect = new RectInfo(vp.x, vp.y, vp.x + vp.w - 1, vp.y + vp.h - 1);
-            return new CleanDirty() { Clean = cleanBox, Dirty = DirtyBoxes };
-        }
-
-        private void SendUpdateRequests(CleanDirty info, int width, int height)
-        {
-            BoxInfo cb = info.Clean;
-            int dirtyLen = info.Dirty.Count;
-
-            List<byte> toSend = new List<byte>();
-
-            if (dirtyLen != 0)
-            {
-                var db = info.Dirty[dirtyLen - 1];
-                int w = db.w == 0 ? width : db.w;
-                int h = db.h == 0 ? height : db.h;
-                toSend.AddRange(GetFramebufferUpdateRequest(false, db.x, db.y, (short)w, (short)h));
-            }
-            else if (cb.w > 0 && cb.h > 0)
-            {
-                int w = cb.w == 0 ? width : cb.w;
-                int h = cb.h == 0 ? height : cb.h;
-                toSend.AddRange(GetFramebufferUpdateRequest(true, cb.x, cb.y, (short)w, (short)h));
-            }
-
-            c.Send(toSend.ToArray());
-        }
-
+        #endregion
         private void HandleIKVMMessage(int code, uint counter, byte[] cMsg)
         {
             var i = 0;
@@ -643,28 +597,32 @@ namespace KVMClient
                     throw new NotImplementedException();
             }
         }
-
         private bool HandleFramebufferUpdate()
         {
             bool ret = true;
 
 
             // This is always read, which is not what noVNC does.
-            byte padding = c.ReceiveByte(); // padding
+            c.ReceiveByte(); // padding
             numRects = c.ReceiveUInt16BE();
             bytes = 0;
 
-            //if (FrameStart != 0)
-            //{
-            //    var duration = DateTime.Now.Ticks - FrameStart;
-            //    FPS = (int)TimeSpan.FromTicks(duration).TotalSeconds;
-            //    UpdateTitle();
-            //    FrameStart = DateTime.Now.Ticks;
-            //}
-            //else
-            //{
-            //    FrameStart = DateTime.Now.Ticks;
-            //}
+            if (numRects != 1)
+            {
+                throw new Exception("rectange count should always be 1");
+            }
+
+            if (FrameStart != 0)
+            {
+                var duration = DateTime.Now.Ticks - FrameStart;
+                FPS = (int)TimeSpan.FromTicks(duration).TotalSeconds;
+                UpdateTitle();
+                FrameStart = DateTime.Now.Ticks;
+            }
+            else
+            {
+                FrameStart = DateTime.Now.Ticks;
+            }
 
 
             if (bytes == 0)
@@ -675,7 +633,7 @@ namespace KVMClient
 
                 if (r.X != 0 || r.Y != 0)
                 {
-                    throw new Exception("Unexpected start x,y,w,h values: "+r.ToString()+". Typically, X and Y should be 0");
+                    throw new Exception("Unexpected start x,y,w,h values: " + r.ToString() + ". Typically, X and Y should be 0");
                 }
 
 
@@ -700,9 +658,10 @@ namespace KVMClient
 
             return ret;
         }
-
+        #region Encoding
         private unsafe bool HandleHermonEncoding(int h, int w, int x, int y, int bpp)
         {
+            // Common code start
             var txtmode = (int)this.c.ReceiveUInt32BE();
             aten_len = (int)this.c.ReceiveUInt32BE();
 
@@ -739,6 +698,8 @@ namespace KVMClient
             {
                 ResizeFB(w, h);
             }
+
+            // common code end
 
             //if (aten_type == -1) // TODO: Is this needed?
             {
@@ -859,139 +820,96 @@ namespace KVMClient
             aten_type = -1;
             return true;
         }
-
-        private void ResizeFB(int w, int h)
-        {
-            if (FramebufferWidth != w || FramebufferHeight != h)
-            {
-                Debug.WriteLine("framebuffer resize: " + w + "," + h);
-
-                FramebufferHeight = h;
-                FramebufferWidth = w;
-                Dispatcher.UIThread.InvokeAsync(() =>
-                {
-                    this.Framebuffer = new WriteableBitmap(new Avalonia.PixelSize(w, h), new Avalonia.Vector(96.0, 96.0), PixelFormats.Rgba8888);
-                    DisplayImage.Source = Framebuffer;
-
-                    // force redraw of entire screen as creating bitmap does not preserve pixels
-                    this._cleanRect = new RectInfo(0, 0, -1, -1);
-                });
-            }
-        }
-
-        private unsafe void DrawImageToBuffer(byte[] sourceBytes, ILockedFramebuffer destination, int sourceWidth, int sourceHeight, int destinationX, int destinationY)
-        {
-            // TODO: misha: not sure why this occurs!
-            if (destinationX + sourceWidth > Framebuffer.Size.Width)
-            {
-                //Debug.WriteLine($"INVAILD draw to {destinationX},{destinationY}");
-                return;
-            }
-
-            // Calculate the number of bytes per pixel (4 for ARGB)
-            int bytesPerPixel = 4;
-
-            // Calculate the byte width of one row in the source image
-            int sourceRowByteWidth = sourceWidth * 4;
-
-            // Calculate the byte width of one row in the destination buffer
-            int destinationRowByteWidth = destination.RowBytes;
-            byte* ptr = (byte*)destination.Address;
-
-            // Iterate over each row of the source image
-            for (int y = 0; y < sourceHeight; y++)
-            {
-                // Calculate the starting byte index for the current row in the source image
-                int sourceRowIndex = y * sourceRowByteWidth;
-
-                // Calculate the starting byte index for the current row in the destination buffer
-                int destinationRowIndex = (destinationY + y) * destinationRowByteWidth + (destinationX * bytesPerPixel);
-
-                // Copy the current row from the source image to the destination buffer
-
-                if (destinationY + y < Framebuffer.Size.Height)
-                {
-                    for (int i = 0; i < sourceRowByteWidth; i++)
-                    {
-                        ptr[destinationRowIndex + i] = sourceBytes[sourceRowIndex + i];
-                    }
-                }
-
-            }
-        }
-
-
         private unsafe bool HandleATENAst2100Encoding(int h, int w, int x, int y, int bpp)
         {
-            //if (DisplayBuffer == null)
-            //{
-            //    DisplayBuffer = new byte[h * w * 4];
-            //}
+            // Common code start
+            var txtmode = (int)this.c.ReceiveUInt32BE();
+            aten_len = (int)this.c.ReceiveUInt32BE();
+            var data = c.Receive(aten_len);
 
-            //if (aten_len == -1)
-            //{
-            //    this.c.ReceiveUInt32BE(); // mystery text mode flag
-            //    aten_len = (int)this.c.ReceiveUInt32BE();
-            //}
-            //byte[]? data = null;
-            //if (aten_len != 0)
-            //{
-            //    bytes = aten_len;
-            //    data = c.Receive(aten_len);
-            //}
-            //numRects--;
-            //if (numRects != 0)
-            //{
-            //    Debug.WriteLine("unexpected number of rects in FramebufferUpdate message; should always be 1!");
-            //}
+            if ((short)w <= 0 && (short)h <= 0)
+            {
+                Debug.WriteLine("[WARN] AMI screen is probably OFF");
+                ResizeFB(640, 480);
 
-            //// @KK: N.B.: It's also very important for the way that this function works that aten_len wind up -1 before
-            //// we ever return true; otherwise we'll fail to parse the two extra, ATEN-specific header fields (see above)
-            //// the next time we get a FramebufferUpdate message.
-            //aten_len = -1;
+                // Required to recieve further updates
+                FramebufferWidth = -640;
+                FramebufferHeight = -480;
+                spamUpdateRequests = true;
+                HasVideoSignal = false;
 
-            //if (w == 64896 && h == 65056)
-            //{
-            //    ResizeFB(640, 480);
+                UpdateTitle();
 
-            //    // Required to recieve further updates
-            //    FramebufferWidth = -640;
-            //    FramebufferHeight = -480;
-            //    spamUpdateRequests = true;
-            //    HasVideoSignal = false;
+                aten_len = 0;
 
-            //    UpdateTitle();
+                return false;
+            }
+            else
+            {
+                spamUpdateRequests = false;
+                if (!HasVideoSignal)
+                {
+                    HasVideoSignal = true;
+                    UpdateTitle();
+                }
+            }
 
-            //    Debug.WriteLine("screen is off");
-            //    return;
-            //}
-            //else if (aten_len == 0)
-            //{
-            //    Debug.WriteLine("Ast2100Decoder: warning: data length is zero, but framebuffer dimensions are not -640x-480 (which is typically given to indicate that the screen is off).");
-            //    return;
-            //}
 
-            //if (!HasVideoSignal)
-            //{
-            //    HasVideoSignal = true;
-            //    UpdateTitle();
-            //}
 
-            //if (h != Framebuffer.Size.Height | w != Framebuffer.Size.Width)
-            //{
-            //    ResizeFB(w, h);
-            //}
+            if (h != Framebuffer.PixelSize.Height | w != Framebuffer.PixelSize.Width)
+            {
+                ResizeFB(w, h);
+            }
 
-            //if (data == null)
-            //{
-            //    throw new Exception("data cannot be null");
-            //}
+            // common code end
 
-            //ast2100Decoder.Decode(data);
+            ast2100Decoder.Decode(data);
             return true;
         }
+        #endregion
+        #region Requests
+        public void SMCPowerAction(SMCPowerActionType type)
+        {
+            if (!Connected)
+            {
+                return;
+            }
+            Debug.WriteLine("Sending power action: " + type);
+            var p = new byte[2];
 
+            p[0] = 26; //26: poweroff
+            p[1] = (byte)type;
 
+            this.c.Send(p);
+        }
+        private void SendFramebufferUpdateRequest(bool incremental)
+        {
+            this.SendFramebufferUpdateRequest(incremental, 0, 0, (short)FramebufferWidth, (short)FramebufferHeight);
+        }
+        private void SendFramebufferUpdateRequest(bool incremental, int x, int y, short width, short height)
+        {
+            this.c.Send(GetFramebufferUpdateRequestBytes(incremental, x, y, width, height));
+        }
+        private byte[] GetFramebufferUpdateRequestBytes(bool incremental, int x, int y, short width, short height)
+        {
+            //Debug.WriteLine("Sending FramebufferUpdate");
+            Console.WriteLine($"update region {x} {y} {width}x{height}");
+            var p = new byte[10];
+
+            if (width < 0 && height < 0)
+            {
+                incremental = false;
+            }
+
+            byte[] res = new byte[10];
+            res[0] = 3;
+            res[1] = incremental ? (byte)1 : (byte)0;
+            Array.Copy(BitConverter.GetBytes((short)x), 0, res, 2, 2);
+            Array.Copy(BitConverter.GetBytes((short)y), 0, res, 4, 2);
+            Array.Copy(BitConverter.GetBytes((short)width), 0, res, 6, 2);
+            Array.Copy(BitConverter.GetBytes((short)height), 0, res, 8, 2);
+            return res;
+        }
         public void SendATENPointerEvent(int x, int y, int pressedButtons)
         {
             if (!Connected)
@@ -1037,67 +955,8 @@ namespace KVMClient
 
             this.c.Send(p);
         }
-        public enum SMCPowerActionType : byte
-        {
-            PowerOn = 1,
-            PowerOff = 0,
-            SoftShutdown = 3,
-            PowerReset = 2,
-        }
-        public void SMCPowerAction(SMCPowerActionType type)
-        {
-            if (!Connected)
-            {
-                return;
-            }
-            Debug.WriteLine("Sending power action: " + type);
-            var p = new byte[2];
-
-            p[0] = 26; //26: poweroff
-            p[1] = (byte)type;
-
-            this.c.Send(p);
-        }
-        private void SendFramebufferUpdateRequest(bool incremental)
-        {
-            this.SendFramebufferUpdateRequest(incremental, 0, 0, (short)FramebufferWidth, (short)FramebufferHeight);
-        }
-        private void SendFramebufferUpdateRequest(bool incremental, int x, int y, short width, short height)
-        {
-            this.c.Send(GetFramebufferUpdateRequest(incremental, x, y, width, height));
-        }
-        private byte[] GetFramebufferUpdateRequest(bool incremental, int x, int y, short width, short height)
-        {
-            //Debug.WriteLine("Sending FramebufferUpdate");
-            Console.WriteLine($"update region {x} {y} {width}x{height}");
-            var p = new byte[10];
-
-            if (width < 0 && height < 0)
-            {
-                incremental = false;
-            }
-
-            byte[] res = new byte[10];
-            res[0] = 3;
-            res[1] = incremental ? (byte)1 : (byte)0;
-            Array.Copy(BitConverter.GetBytes((short)x), 0, res, 2, 2);
-            Array.Copy(BitConverter.GetBytes((short)y), 0, res, 4, 2);
-            Array.Copy(BitConverter.GetBytes((short)width), 0, res, 6, 2);
-            Array.Copy(BitConverter.GetBytes((short)height), 0, res, 8, 2);
-            return res;
-        }
-        private bool NegotiateVersion()
-        {
-            this.serverVersion = this.c.ReceiveVersion();
-            Console.WriteLine("VNC Version: " + serverVersion);
-            if (serverVersion == new Version(55, 8))
-            {
-                IsAST24000 = true;
-            }
-            this.c.SendVersion(serverVersion);
-            return true;
-        }
-
+        #endregion
+        #region FB Utils
         private void ConvertColor(byte[] OutArray, byte[] InArray, out int j)
         {
             j = 0;
@@ -1151,26 +1010,128 @@ namespace KVMClient
                 // MessageBox.Show(ex.ToString());
             }
         }
-        private enum ResponseType : byte
+        private void ResizeFB(int w, int h)
         {
-            FramebufferUpdate = 0,
-            SetColorMapEntries = 1,
-            Bell = 2,
-            ReceiveClipboardData = 3,
-            ATENSessionMessage = 57,
-            ATENFrontGroundEvent = 4,
-            DesktopSize = 200,
+            if (FramebufferWidth != w || FramebufferHeight != h)
+            {
+                Debug.WriteLine("framebuffer resize: " + w + "," + h);
+
+                FramebufferHeight = h;
+                FramebufferWidth = w;
+                Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    this.Framebuffer = new WriteableBitmap(new Avalonia.PixelSize(w, h), new Avalonia.Vector(96.0, 96.0), PixelFormats.Rgba8888);
+                    DisplayImage.Source = Framebuffer;
+
+                    // force redraw of entire screen as creating bitmap does not preserve pixels
+                    this._cleanRect = new RectInfo(0, 0, -1, -1);
+                });
+            }
+        }
+        private unsafe void DrawImageToBuffer(byte[] sourceBytes, ILockedFramebuffer destination, int sourceWidth, int sourceHeight, int destinationX, int destinationY)
+        {
+            // TODO: misha: not sure why this occurs!
+            if (destinationX + sourceWidth > Framebuffer.Size.Width)
+            {
+                //Debug.WriteLine($"INVAILD draw to {destinationX},{destinationY}");
+                return;
+            }
+
+            // Calculate the number of bytes per pixel (4 for ARGB)
+            int bytesPerPixel = 4;
+
+            // Calculate the byte width of one row in the source image
+            int sourceRowByteWidth = sourceWidth * 4;
+
+            // Calculate the byte width of one row in the destination buffer
+            int destinationRowByteWidth = destination.RowBytes;
+            byte* ptr = (byte*)destination.Address;
+
+            // Iterate over each row of the source image
+            for (int y = 0; y < sourceHeight; y++)
+            {
+                // Calculate the starting byte index for the current row in the source image
+                int sourceRowIndex = y * sourceRowByteWidth;
+
+                // Calculate the starting byte index for the current row in the destination buffer
+                int destinationRowIndex = (destinationY + y) * destinationRowByteWidth + (destinationX * bytesPerPixel);
+
+                // Copy the current row from the source image to the destination buffer
+
+                if (destinationY + y < Framebuffer.Size.Height)
+                {
+                    for (int i = 0; i < sourceRowByteWidth; i++)
+                    {
+                        ptr[destinationRowIndex + i] = sourceBytes[sourceRowIndex + i];
+                    }
+                }
+
+            }
+        }
+        private CleanDirty GetCleanDirtyReset()
+        {
+            BoxInfo vp = new BoxInfo(0, 0, FramebufferWidth, FramebufferHeight);
+            RectInfo cr = _cleanRect;
+
+            BoxInfo cleanBox = new BoxInfo(cr.x1, cr.y1, cr.x2 - cr.x1 + 1, cr.y2 - cr.y1 + 1);
+            List<BoxInfo> DirtyBoxes = new List<BoxInfo>();
+
+            if (cr.x1 >= cr.x2 || cr.y1 >= cr.y2)
+            {
+                DirtyBoxes.Add(new BoxInfo(vp.x, vp.y, vp.w, vp.h));
+            }
+            else
+            {
+                var vx2 = vp.x + vp.w - 1;
+                var vy2 = vp.y + vp.h - 1;
+
+                if (vp.x < cr.x1)
+                {
+                    DirtyBoxes.Add(new BoxInfo(vp.x, vp.y, cr.x1 - vp.x, vp.h));
+                }
+                if (vx2 > cr.x2)
+                {
+                    DirtyBoxes.Add(new BoxInfo(cr.x2 + 1, vp.y, vx2 - cr.x2, vp.h));
+                }
+                if (vp.y < cr.y1)
+                {
+                    DirtyBoxes.Add(new BoxInfo(cr.x1, vp.y, cr.x2 - cr.x1 + 1, cr.y1 - vp.y));
+                }
+                if (vy2 > cr.y2)
+                {
+                    DirtyBoxes.Add(new BoxInfo(cr.x1, cr.y2 + 1, cr.x2 - cr.x1 + 1, vy2 - cr.y2));
+                }
+            }
+
+            _cleanRect = new RectInfo(vp.x, vp.y, vp.x + vp.w - 1, vp.y + vp.h - 1);
+            return new CleanDirty() { Clean = cleanBox, Dirty = DirtyBoxes };
         }
 
-        private void Image_KeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
+        private void SendUpdateRequests(CleanDirty info, int width, int height)
         {
-            SendATENKbdEvent(ConvertKey(e.PhysicalKey), true);
-        }
+            BoxInfo cb = info.Clean;
+            int dirtyLen = info.Dirty.Count;
 
-        private void Image_KeyUp(object? sender, Avalonia.Input.KeyEventArgs e)
-        {
-            SendATENKbdEvent(ConvertKey(e.PhysicalKey), false);
+            List<byte> toSend = new List<byte>();
+
+            if (dirtyLen != 0)
+            {
+                var db = info.Dirty[dirtyLen - 1];
+                int w = db.w == 0 ? width : db.w;
+                int h = db.h == 0 ? height : db.h;
+                toSend.AddRange(GetFramebufferUpdateRequestBytes(false, db.x, db.y, (short)w, (short)h));
+            }
+            else if (cb.w > 0 && cb.h > 0)
+            {
+                int w = cb.w == 0 ? width : cb.w;
+                int h = cb.h == 0 ? height : cb.h;
+                toSend.AddRange(GetFramebufferUpdateRequestBytes(true, cb.x, cb.y, (short)w, (short)h));
+            }
+
+            c.Send(toSend.ToArray());
         }
+        #endregion
+        #region UI
         private int ConvertKey(PhysicalKey physicalKey)
         {
             if (PhysicalKey.A <= physicalKey && PhysicalKey.Z >= physicalKey)
@@ -1340,6 +1301,14 @@ namespace KVMClient
             }
             return 0;
         }
+        private void Image_KeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
+        {
+            SendATENKbdEvent(ConvertKey(e.PhysicalKey), true);
+        }
+        private void Image_KeyUp(object? sender, Avalonia.Input.KeyEventArgs e)
+        {
+            SendATENKbdEvent(ConvertKey(e.PhysicalKey), false);
+        }
         private void Exit_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             if (c != null)
@@ -1356,12 +1325,10 @@ namespace KVMClient
             }
             Close();
         }
-
         private void Image_Tapped(object? sender, Avalonia.Input.TappedEventArgs e)
         {
             e.Pointer.Capture(DisplayImage);
         }
-
         private void ImmediateShutdown_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             SMCPowerAction(SMCPowerActionType.PowerOff);
@@ -1370,7 +1337,6 @@ namespace KVMClient
         {
             SMCPowerAction(SMCPowerActionType.PowerReset);
         }
-
         private void Poweron_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             SMCPowerAction(SMCPowerActionType.PowerOn);
@@ -1379,22 +1345,20 @@ namespace KVMClient
         {
             SMCPowerAction(SMCPowerActionType.SoftShutdown);
         }
-
         private void UpdateTitle()
         {
             Dispatcher.UIThread.InvokeAsync(() =>
             {
-                string title = "iKVM Viewer ";
-                if (useSSL)
-                {
-                    title += "(SSL) ";
-                }
+                string title = useSSL ? "iKVM Viewer (SSL) - " : "iKVM Viewer - ";
+
                 if (VideoOnly)
                 {
                     title += "- Video only - ";
                 }
+
                 if (HasVideoSignal)
                 {
+                    title += $"{FramebufferWidth}x{FramebufferHeight} ";
                     title += "(FPS: " + FPS + ")";
                 }
                 else
@@ -1404,12 +1368,31 @@ namespace KVMClient
                 Title = title;
             });
         }
-
+        #endregion
 
         //private void pictureBox1_MouseMove(object sender, MouseEventArgs e)
         //{
         //   // var cursorPostion = DisplayBuffer.PointToClient(Cursor.Position);
         //    //SendPointerEvent(cursorPostion.X, cursorPostion.Y, 0);
         //}
+    }
+
+    public enum RFBMessageType : byte
+    {
+        FramebufferUpdate = 0,
+        SetColorMapEntries = 1,
+        Bell = 2,
+        ReceiveClipboardData = 3,
+        ATENSessionMessage = 57,
+        ATENFrontGroundEvent = 4,
+        DesktopSize = 200,
+    }
+
+    public enum SMCPowerActionType : byte
+    {
+        PowerOn = 1,
+        PowerOff = 0,
+        SoftShutdown = 3,
+        PowerReset = 2,
     }
 }
