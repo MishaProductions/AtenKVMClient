@@ -40,7 +40,7 @@
 						<ColumnDefinition Width="auto"></ColumnDefinition>
 					</Grid.ColumnDefinitions>
 
-					<TextBlock Grid.Column="0" TextAlignment="Center" VerticalAlignment="Center">KVMClient BETA 0.4A</TextBlock>
+					<TextBlock Grid.Column="0" TextAlignment="Center" VerticalAlignment="Center">KVMClient BETA 0.4B</TextBlock>
 					<Button Grid.Column="2" Click="AddHost_Click">+</Button>
 				</Grid>
 				<ScrollViewer Grid.Row="1">
