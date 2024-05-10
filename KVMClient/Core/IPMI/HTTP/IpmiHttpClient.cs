@@ -614,6 +614,11 @@ namespace KVMClient.Core.IPMI.HTTP
             var response2 = await client.GetAsync("https://" + Host + "/cgi/url_redirect.cgi?url_name=ikvm&url_type=jwsk");
             var x = await response2.Content.ReadAsStringAsync();
 
+            if (x.Contains("File Not Found"))
+            {
+                throw new Exception("Please switch to \"JAVA plug-in\" in BMC.");
+            }
+
             XmlDocument xmlDoc = new();
             xmlDoc.LoadXml(x);
 

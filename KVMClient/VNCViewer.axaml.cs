@@ -177,8 +177,6 @@ namespace KVMClient
                     return;
                 }
             }
-            // lblStatus.Text = "Preforming handshake";
-            // prgLogin.Value = 1;
 
             if (!NegotiateVersion())
             {
@@ -194,7 +192,6 @@ namespace KVMClient
                 return;
             }
 
-            //  prgLogin.Value = 3;
             //1: share desktop, 0: take ownership
             this.c.SendByte((byte)(1));
 
@@ -238,9 +235,6 @@ namespace KVMClient
             FramebufferPixelFormat.BlueShift = 0;
             //}
 
-            // lblStatus.Text = "Configuring encoding for " + ServerName;
-            // prgLogin.Value = 5;
-
             var encodings = new VncEncoding[]
             {
                 VncEncoding.Zlib,
@@ -271,7 +265,6 @@ namespace KVMClient
             Thread videoSinger = new Thread(ThreadVideoSinger);
             videoSinger.Start();
             //prgLogin.Visible = false;
-
             #endregion
         }
 
@@ -1342,68 +1335,6 @@ namespace KVMClient
                     return 0x47;
                 case PhysicalKey.Pause:
                     return 0x48;
-                case PhysicalKey.BrowserBack:
-                    break;
-                case PhysicalKey.BrowserFavorites:
-                    break;
-                case PhysicalKey.BrowserForward:
-                    break;
-                case PhysicalKey.BrowserHome:
-                    break;
-                case PhysicalKey.BrowserRefresh:
-                    break;
-                case PhysicalKey.BrowserSearch:
-                    break;
-                case PhysicalKey.BrowserStop:
-                    break;
-                case PhysicalKey.Eject:
-                    break;
-                case PhysicalKey.LaunchApp1:
-                    break;
-                case PhysicalKey.LaunchApp2:
-                    break;
-                case PhysicalKey.LaunchMail:
-                    break;
-                case PhysicalKey.MediaPlayPause:
-                    break;
-                case PhysicalKey.MediaSelect:
-                    break;
-                case PhysicalKey.MediaStop:
-                    break;
-                case PhysicalKey.MediaTrackNext:
-                    break;
-                case PhysicalKey.MediaTrackPrevious:
-                    break;
-                case PhysicalKey.Power:
-                    break;
-                case PhysicalKey.Sleep:
-                    break;
-                case PhysicalKey.AudioVolumeDown:
-                    break;
-                case PhysicalKey.AudioVolumeMute:
-                    break;
-                case PhysicalKey.AudioVolumeUp:
-                    break;
-                case PhysicalKey.WakeUp:
-                    break;
-                case PhysicalKey.Again:
-                    break;
-                case PhysicalKey.Copy:
-                    break;
-                case PhysicalKey.Cut:
-                    break;
-                case PhysicalKey.Find:
-                    break;
-                case PhysicalKey.Open:
-                    break;
-                case PhysicalKey.Paste:
-                    break;
-                case PhysicalKey.Props:
-                    break;
-                case PhysicalKey.Select:
-                    break;
-                case PhysicalKey.Undo:
-                    break;
                 default:
                     break;
             }

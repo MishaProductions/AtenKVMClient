@@ -185,7 +185,7 @@ public partial class ServerView : UserControl
     private async Task LoadPreview()
     {
         prgPreview.IsVisible = true;
-        VNCPreview.Source = new WriteableBitmap(new PixelSize(640,480), new Vector(96,96));
+        VNCPreview.Source = new WriteableBitmap(new PixelSize(640, 480), new Vector(96, 96));
 
         try
         {
@@ -209,15 +209,26 @@ public partial class ServerView : UserControl
     }
     private async void Preview_Tapped(object? sender, Avalonia.Input.TappedEventArgs e)
     {
-        var sess = await hclient.GetKVMSession();
-        if (sess == null)
+        KvmSession? sess = null;
+        try
         {
-            await new ContentDialog() { Content = "Failed to open KVM session\n", PrimaryButtonText = "OK", Title = "Connection failed" }.ShowAsync();
+            sess = await hclient.GetKVMSession();
+            if (sess == null)
+            {
+                await new ContentDialog() { Content = "Failed to open KVM session\n", PrimaryButtonText = "OK", Title = "Connection failed" }.ShowAsync();
+                return;
+            }
         }
-        else
+        catch (Exception ex)
         {
-            new VNCViewer(new ServerDef(IP, sess.Username, sess.Password), iclient).Show();
+            if (sess == null)
+            {
+                await new ContentDialog() { Content = "Failed to open KVM session:\n" + ex.ToString(), PrimaryButtonText = "OK", Title = "Connection failed" }.ShowAsync();
+                return;
+            }
         }
+
+        new VNCViewer(new ServerDef(IP, sess.Username, sess.Password), iclient).Show();
     }
 
     private async void btnRefreshPreview_Click(object? sender, RoutedEventArgs e)

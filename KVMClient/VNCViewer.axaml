@@ -13,7 +13,8 @@ xmlns:uip="using:FluentAvalonia.UI.Controls.Primitives">
 			<RowDefinition Height="auto"></RowDefinition>
 		</Grid.RowDefinitions>
 
-		<Menu Grid.Row="0">
+		<Menu Grid.Row="0" x:Name="menuControl" >
+			<Menu.KeyBindings></Menu.KeyBindings>
 			<Menu.Items>
 				<MenuItem Header="Power">
 					<MenuItem Header="Force shutdown" Click="ImmediateShutdown_Click"/>
