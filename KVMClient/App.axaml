@@ -9,8 +9,6 @@
 		<sty:FluentAvaloniaTheme />
 		
 		<FluentTheme></FluentTheme>
-		<StyleInclude Source="avares://FluentAvalonia.ProgressRing/Styling/Controls/ProgressRing.axaml" />
-
 		<StyleInclude Source="avares://OxyPlot.Avalonia/Themes/Default.axaml"/>
 
 	</Application.Styles>
