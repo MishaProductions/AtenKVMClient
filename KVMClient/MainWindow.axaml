@@ -33,30 +33,37 @@
 					<RowDefinition Height="*"></RowDefinition>
 				</Grid.RowDefinitions>
 
-				<Grid Grid.Row="0" Background="{DynamicResource ApplicationPageBackgroundThemeBrush}">
+				<Grid Grid.Row="0">
 					<Grid.ColumnDefinitions>
 						<ColumnDefinition Width="auto"></ColumnDefinition>
 						<ColumnDefinition Width="*"></ColumnDefinition>
 						<ColumnDefinition Width="auto"></ColumnDefinition>
 					</Grid.ColumnDefinitions>
-
-					<TextBlock Grid.Column="0" TextAlignment="Center" VerticalAlignment="Center">KVMClient BETA 0.4B</TextBlock>
-					<Button Grid.Column="2" Click="AddHost_Click">+</Button>
+					
+					<TextBlock Grid.Column="0" TextAlignment="Center" VerticalAlignment="Center">KVMClient ALPHA 0.05</TextBlock>
+					<Button Grid.Column="2" Click="AddHost_Click">
+						<ui:SymbolIcon Symbol="Add"></ui:SymbolIcon>
+					</Button>
 				</Grid>
 				<ScrollViewer Grid.Row="1">
 					
-					<ListBox x:Name="hosts" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.HorizontalScrollBarVisibility="Visible" >
+					<ListBox x:Name="hosts" 
+							 Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+							 ScrollViewer.VerticalScrollBarVisibility="Visible"
+							 ScrollViewer.HorizontalScrollBarVisibility="Visible" >
+
 						<ListBox.Resources>
 							<!--Defines a context menu-->
-							<ContextMenu x:Key="MyElementMenu">
+							<MenuFlyout x:Key="ListboxFlyout">
 								<MenuItem Header="Modify" Click="MenuModifyClick"/>
 								<MenuItem Header="Remove" Click="MenuRemoveClick"/>
-							</ContextMenu>
+							</MenuFlyout>
+
 						</ListBox.Resources>
 						<ListBox.Styles>
 							<!--Sets a context menu for each ListBoxItem in the current ListBox-->
 							<Style Selector="ListBoxItem">
-								<Setter Property="ContextMenu" Value="{StaticResource MyElementMenu}"/>
+								<Setter Property="ContextFlyout" Value="{StaticResource ListboxFlyout}"/>
 							</Style>
 
 						</ListBox.Styles>

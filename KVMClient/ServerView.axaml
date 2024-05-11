@@ -7,7 +7,7 @@
 			 xmlns:ui="using:FluentAvalonia.UI.Controls"
 			xmlns:uip="using:FluentAvalonia.UI.Controls.Primitives"
 			xmlns:oxy="http://oxyplot.org/avalonia"
-			  xmlns:progRing="clr-namespace:AvaloniaProgressRing;assembly=AvaloniaProgressRing">
+			Background="{DynamicResource SolidBackgroundFillColorTertiaryBrush}">
 	<ScrollViewer>
 		<Grid>
 
@@ -55,20 +55,20 @@
 						</Grid>
 
 						<!--Logs-->
-						<Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="5" Background="{DynamicResource ApplicationPageBackgroundThemeBrush}" BorderThickness="1,1,1,1" CornerRadius="10">
+						<Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="5" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderThickness="1,1,1,1" CornerRadius="10">
 							<Grid>
 								<Grid.RowDefinitions>
 									<RowDefinition Height="auto"/>
 									<RowDefinition Height="*"/>
 								</Grid.RowDefinitions>
 
-								<TextBlock FontSize="20" Grid.Row="0">Latest Logs</TextBlock>
+								<TextBlock FontSize="20" Grid.Row="0" Margin="5">Latest Logs</TextBlock>
 								<DataGrid Grid.Row="1" Height="150"></DataGrid>
 							</Grid>
 						</Border>
 
 						<!--VNC-->
-						<Border Grid.Row="2" Grid.Column="0" Margin="5" Background="{DynamicResource ApplicationPageBackgroundThemeBrush}" BorderThickness="1,1,1,1" CornerRadius="10">
+						<Border Grid.Row="2" Grid.Column="0" Margin="5" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderThickness="1,1,1,1" CornerRadius="10">
 							<Grid>
 								<Grid.RowDefinitions>
 									<RowDefinition Height="auto"/>
@@ -79,8 +79,10 @@
 									<ColumnDefinition Width="auto"/>
 								</Grid.ColumnDefinitions>
 
-								<TextBlock FontSize="14" Grid.Row="0" Grid.Column="0">Remote Console</TextBlock>
-								<Button x:Name="btnRefreshPreview" Grid.Row="0" Grid.Column="1" Click="btnRefreshPreview_Click">Refresh</Button>
+								<TextBlock FontSize="14" Grid.Row="0" Grid.Column="0"  Margin="5">Remote Console</TextBlock>
+								<Button x:Name="btnRefreshPreview" Grid.Row="0" Grid.Column="1" Click="btnRefreshPreview_Click">
+									<ui:SymbolIcon Symbol="Refresh"></ui:SymbolIcon>
+								</Button>
 								<Grid Grid.Row="1" Grid.ColumnSpan="2">
 									<Grid.RowDefinitions>
 										<RowDefinition Height="Auto"></RowDefinition>
@@ -96,7 +98,7 @@
 						</Border>
 
 						<!--Power consumption-->
-						<Border Grid.Row="2" Grid.Column="1" Margin="5" Background="{DynamicResource ApplicationPageBackgroundThemeBrush}" BorderThickness="1,1,1,1" CornerRadius="10">
+						<Border Grid.Row="2" Grid.Column="1" Margin="5" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderThickness="1,1,1,1" CornerRadius="10">
 							<Grid>
 								<Grid.RowDefinitions>
 									<RowDefinition Height="auto"/>
@@ -110,20 +112,22 @@
 								<TextBlock FontSize="14" Grid.Row="0" Grid.Column="0">Power consumption</TextBlock>
 
 								<oxy:Plot Grid.Row="1" Grid.ColumnSpan="2"
-               PlotMargins="50 0 0 0"
-               PlotAreaBorderColor="#999999">
+               PlotMargins="50 0 0 0" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+									  Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+								     PlotAreaBorderColor="{DynamicResource TextFillColorPrimary}">
 									<oxy:Plot.Series>
 										<oxy:AreaSeries
 											DataFieldX="Index"
 											DataFieldY="Value"
 											
-											Color="#fd6d00" />
+											Color="Blue"
+											Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
 									</oxy:Plot.Series>
 								</oxy:Plot>
 							</Grid>
 						</Border>
 						<!--Info-->
-						<Border Grid.Row="2" Grid.Column="2" Margin="5" Background="{DynamicResource ApplicationPageBackgroundThemeBrush}" BorderThickness="1,1,1,1" CornerRadius="10">
+						<Border Grid.Row="2" Grid.Column="2" Margin="5" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderThickness="1,1,1,1" CornerRadius="10">
 							<ScrollViewer>
 								<WrapPanel Orientation="Vertical" x:Name="MainWrapPanel">
 

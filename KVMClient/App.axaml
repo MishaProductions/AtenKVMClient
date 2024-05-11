@@ -6,10 +6,9 @@
              <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
     <Application.Styles>
-		<sty:FluentAvaloniaTheme />
+		<sty:FluentAvaloniaTheme PreferUserAccentColor="True" PreferSystemTheme="True"/>
 		
-		<FluentTheme></FluentTheme>
-		<StyleInclude Source="avares://OxyPlot.Avalonia/Themes/Default.axaml"/>
+		<StyleInclude Source="avares://OxyPlot.Avalonia/Themes/Default.axaml" />
 
 	</Application.Styles>
 </Application>

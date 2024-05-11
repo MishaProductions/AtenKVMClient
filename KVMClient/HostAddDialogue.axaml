@@ -7,10 +7,13 @@
 	<Grid>
 		<Grid.RowDefinitions>
 			<RowDefinition Height="Auto"></RowDefinition>
+			<RowDefinition Height="10"></RowDefinition>
 			<RowDefinition Height="Auto"></RowDefinition>
+			<RowDefinition Height="10"></RowDefinition>
 			<RowDefinition Height="Auto"></RowDefinition>
-
+			<RowDefinition Height="10"></RowDefinition>
 			<RowDefinition Height="Auto"></RowDefinition>
+			<RowDefinition Height="10"></RowDefinition>
 			<RowDefinition Height="Auto"></RowDefinition>
 		</Grid.RowDefinitions>
 
@@ -19,13 +22,13 @@
 			<ColumnDefinition Width="*"></ColumnDefinition>
 		</Grid.ColumnDefinitions>
 
-		<TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center">IP:</TextBlock>
-		<TextBox Grid.Row="1" Grid.Column="1" x:Name="txtAddHostIp"></TextBox>
+		<TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">IP:</TextBlock>
+		<TextBox Grid.Row="0" Grid.Column="1" x:Name="txtAddHostIp"></TextBox>
 		<TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center">Username:</TextBlock>
 		<TextBox Grid.Row="2" Grid.Column="1" x:Name="txtAddHostUser"></TextBox>
-		<TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center">Password:</TextBlock>
-		<TextBox Grid.Row="3" Grid.Column="1" x:Name="txtAddHostPw" PasswordChar="*"></TextBox>
-		<TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center">Name:</TextBlock>
-		<TextBox Grid.Row="4" Grid.Column="1" x:Name="txtAddHostName"></TextBox>
+		<TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center">Password:</TextBlock>
+		<TextBox Grid.Row="4" Grid.Column="1" x:Name="txtAddHostPw" PasswordChar="*"></TextBox>
+		<TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center">Name:</TextBlock>
+		<TextBox Grid.Row="6" Grid.Column="1" x:Name="txtAddHostName"></TextBox>
 	</Grid>
 </UserControl>

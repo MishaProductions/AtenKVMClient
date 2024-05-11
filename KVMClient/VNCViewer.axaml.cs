@@ -863,7 +863,7 @@ namespace KVMClient
 
             // common code end
 
-            ast2100Decoder.Decode(data);
+            ast2100Decoder.Decode(data, w, h);
             return true;
         }
         #endregion
