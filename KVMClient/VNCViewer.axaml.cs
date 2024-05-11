@@ -112,7 +112,7 @@ namespace KVMClient
 
             Title = "iKVM viewer - Connecting";
 
-            int delay = 10;
+            int delay = 2;
 
             bool trySsl = false;
             try
@@ -863,7 +863,32 @@ namespace KVMClient
 
             // common code end
 
-            ast2100Decoder.Decode(data, w, h);
+            try
+            {
+                ast2100Decoder.Decode(data, w, h);
+            }
+            catch
+            {
+
+            }
+
+            // the encoder already converts color for us, and this codec outputs the full display
+            // buffer for some reason.
+
+
+            var bmpData2 = Framebuffer.Lock();
+            fixed(byte* ptr = ast2100Decoder.mOutBuffer)
+            {
+                Buffer.MemoryCopy(ptr, (void*)bmpData2.Address, bmpData2.RowBytes * bmpData2.Size.Height, ast2100Decoder.mOutBuffer.LongLength);
+            }
+            bmpData2.Dispose();
+
+            Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                DisplayImage.Source = Framebuffer;
+                DisplayImage.InvalidateVisual();
+            });
+
             return true;
         }
         #endregion

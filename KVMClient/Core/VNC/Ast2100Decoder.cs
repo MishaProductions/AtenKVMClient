@@ -11,8 +11,8 @@ namespace KVMClient.Core.VNC
         private int mHeight;
         private byte[] buffer = new byte[0];
         private int mIndex;
-        private uint mCodebuf;
-        private uint mNewbuf;
+        private int mCodebuf;
+        private int mNewbuf;
         private int mYSelector;
         private int mUVSelector;
         private int mYUVMode;
@@ -36,8 +36,8 @@ namespace KVMClient.Core.VNC
         private int mSharpModeSelection;
         private int mAdvanceScaleFactor;
         private int mAdvanceScaleFactorUV;
-        private uint mTxb;
-        private uint mTyb;
+        private int mTxb;
+        private int mTyb;
         private int mNewbits = 0;
         private int mDCY;
         private int mDCCb;
@@ -78,6 +78,10 @@ namespace KVMClient.Core.VNC
 
         private uint[] mWorkspace = new uint[64 * 4];
 
+        public byte[] mOutBuffer = new byte[0];
+        private int mTwb;
+        private int mThb;
+        private int mThw;
         public Ast2100Decoder()
         {
             mNegPow2 = new float[] { 0, -1, -3, -7, -15, -31, -63, -127, -255, -511, -1023, -2047, -4095, -8191, -16383, -32767 };
@@ -85,14 +89,14 @@ namespace KVMClient.Core.VNC
                 this.mQT[i] = new double[64];
         }
 
-        private uint GetQBytesFromBuffer(int len)
+        private int GetQBytesFromBuffer(int len)
         {
-            uint result = 0;
-            for (uint i = 0; i < len; i++)
+            int result = 0;
+            for (int i = 0; i < len; i++)
             {
                 if (mIndex < buffer.Length)
                 {
-                    result |= ((uint)buffer[mIndex++] << 8) * i;
+                    result |= (int)buffer[mIndex++] << (8 * i); ;
                 }
                 else
                 {
@@ -101,14 +105,7 @@ namespace KVMClient.Core.VNC
             }
             return result;
         }
-        private bool inRangeIncl(int x, int a, int b)
-        {
-            return x >= a && x <= b;
-        }
-        public byte[] mOutBuffer = new byte[0];
-        private int mTwb;
-        private int mThb;
-        private int mThw;
+
 
         public bool Decode(byte[] data, int width, int height)
         {
@@ -124,7 +121,7 @@ namespace KVMClient.Core.VNC
             VQInitialize();
             set_tmp_width_height(mMode420, width, height, mTmpWidth, mTmpHeight);
 
-            mOutBuffer = new byte[width * height];
+            mOutBuffer = new byte[width * height * 4];
             mAdvanceScaleFactor = 16;
             mAdvanceScaleFactorUV = 16;
             mAdvanceSelector = 0;
@@ -269,7 +266,7 @@ namespace KVMClient.Core.VNC
             return true;
         }
 
-        private void VQ_Decompress(uint txb, uint tyb, byte[] outBuf, int QT_TableSelection)
+        private void VQ_Decompress(int txb, int tyb, byte[] outBuf, int QT_TableSelection)
         {
             int ptr_index, i;
             var byTileYuv = this.mTileYuv;
@@ -294,20 +291,20 @@ namespace KVMClient.Core.VNC
                     byTileYuv[ptr_index + 64] = (byte)((b & 65280) >> 8);
                     byTileYuv[ptr_index + 128] = (byte)(b & 255);
                     ptr_index += 1;
-                    this.skipKbits(mDecode_Color_BitMapBits);
+                    this.skipKbits((int)mDecode_Color_BitMapBits);
                 }
             }
         }
 
-        private void skipKbits(uint mDecode_Color_BitMapBits)
+        private void skipKbits(int mDecode_Color_BitMapBits)
         {
-            updatereadbuf((int)mDecode_Color_BitMapBits);
+            updatereadbuf(mDecode_Color_BitMapBits);
         }
-        private ushort getKbits(uint k)
+        private short getKbits(int k)
         {
-            ushort signed_wordvalue = (ushort)(65535 & ((this.mCodebuf >>> 32) - k));
-            if ((((1 << (int)k) - 1) & signed_wordvalue) == 0)
-                signed_wordvalue = (ushort)(signed_wordvalue + this.mNegPow2[k]);
+            short signed_wordvalue = (short)(65535 & this.mCodebuf >>> 32 - k);
+            if ((1 << k - 1 & signed_wordvalue) == 0)
+                signed_wordvalue = (short)(signed_wordvalue + this.mNegPow2[k]);
             this.skipKbits(k);
             return signed_wordvalue;
         }
@@ -327,7 +324,7 @@ namespace KVMClient.Core.VNC
             }
         }
 
-        private void Decompress(uint txb, uint tyb, byte[] outBuf, int QT_TableSelection)
+        private void Decompress(int txb, int tyb, byte[] outBuf, int QT_TableSelection)
         {
             var byTileYuv = this.mTileYuv;
             var ptr_index = 0;
@@ -462,7 +459,7 @@ namespace KVMClient.Core.VNC
 
             YUVToRGB(txb, tyb, outBuf);
         }
-        private void YUVToRGB(uint txb, uint tyb, byte[] pBgr)
+        private void YUVToRGB(int txb, int tyb, byte[] pBgr)
         {
             uint cb, cr, m, n;
             if (mMode420 == 0)
@@ -473,8 +470,8 @@ namespace KVMClient.Core.VNC
             {
                 int[] mPy420Index = new int[4];
 
-                uint pixel_x = txb << 4;
-                uint pixel_y = tyb << 4;
+                int pixel_x = txb << 4;
+                int pixel_y = tyb << 4;
                 uint pos = (uint)(pixel_y * this.mWidth + pixel_x);
 
                 for (uint j = 0; j < 16; j++)
@@ -500,7 +497,9 @@ namespace KVMClient.Core.VNC
                         }
 
                         n = pos + i;
-                        pBgr[(n << 2) + 2] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCbToB[cb]];
+
+                        var idsdac = (n << 2) + 2;
+                        pBgr[idsdac] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCbToB[cb]];
                         pBgr[(n << 2) + 1] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCbToG[cb] + this.mCrToG[cr]];
                         pBgr[(n << 2) + 0] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCrToR[cr]];
                         pBgr[(n << 2) + 3] = 255;
@@ -531,10 +530,10 @@ namespace KVMClient.Core.VNC
 
         private void IDCT_transform(int[] coef, byte[] data, int index, int nBlock)
         {
-            var FIX_1_082392200 = 277;
-            var FIX_1_414213562 = 362;
-            var FIX_1_847759065 = 473;
-            var FIX_2_613125930 = 669;
+            int FIX_1_082392200 = 277;
+            int FIX_1_414213562 = 362;
+            int FIX_1_847759065 = 473;
+            int FIX_2_613125930 = 669;
             int tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
             int tmp10, tmp11, tmp12, tmp13;
             uint z5, z10, z11, z12, z13;
@@ -621,14 +620,14 @@ namespace KVMClient.Core.VNC
                 tmp6 = tmp12 - tmp7;
                 tmp5 = tmp11 - tmp6;
                 tmp4 = tmp10 + tmp5;
-                outptr[index + outptr_index + 0] = (byte)this.mRlimitTable[384 + IDESCALE(tmp0 + tmp7, 3) & 1023];
-                outptr[index + outptr_index + 7] = (byte)this.mRlimitTable[384 + IDESCALE(tmp0 - tmp7, 3) & 1023];
-                outptr[index + outptr_index + 1] = (byte)this.mRlimitTable[384 + IDESCALE(tmp1 + tmp6, 3) & 1023];
-                outptr[index + outptr_index + 6] = (byte)this.mRlimitTable[384 + IDESCALE(tmp1 - tmp6, 3) & 1023];
-                outptr[index + outptr_index + 2] = (byte)this.mRlimitTable[384 + IDESCALE(tmp2 + tmp5, 3) & 1023];
-                outptr[index + outptr_index + 5] = (byte)this.mRlimitTable[384 + IDESCALE(tmp2 - tmp5, 3) & 1023];
-                outptr[index + outptr_index + 4] = (byte)this.mRlimitTable[384 + IDESCALE(tmp3 + tmp4, 3) & 1023];
-                outptr[index + outptr_index + 3] = (byte)this.mRlimitTable[384 + IDESCALE(tmp3 - tmp4, 3) & 1023];
+                outptr[index + outptr_index + 0] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp0 + (uint)tmp7), 3) & 1023];
+                outptr[index + outptr_index + 7] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp0 - (uint)tmp7), 3) & 1023];
+                outptr[index + outptr_index + 1] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp1 + (uint)tmp6), 3) & 1023];
+                outptr[index + outptr_index + 6] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp1 - (uint)tmp6), 3) & 1023];
+                outptr[index + outptr_index + 2] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp2 + (uint)tmp5), 3) & 1023];
+                outptr[index + outptr_index + 5] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp2 - (uint)tmp5), 3) & 1023];
+                outptr[index + outptr_index + 4] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp3 + (uint)tmp4), 3) & 1023];
+                outptr[index + outptr_index + 3] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp3 - (uint)tmp4), 3) & 1023];
             }
         }
 
@@ -636,9 +635,9 @@ namespace KVMClient.Core.VNC
         {
             return (int)(vari * cons >> 8);
         }
-        private int IDESCALE(int x, int n)
+        private int IDESCALE(uint x, uint n)
         {
-            return x >> n;
+            return (int)x >> (int)n;
         }
 
         private void process_Huffman_data_unit(int DC_nr, int AC_nr, int previous_DC, int position)
@@ -658,8 +657,8 @@ namespace KVMClient.Core.VNC
             huff_values = HTDC[DC_nr].V;
             nr = 0;
             k = HTDC[DC_nr].table_len[this.mCodebuf >>> 16];
-            tmp_Hcode = (ushort)(65535 & (this.mCodebuf >>> 32 - k));
-            this.skipKbits((uint)k);
+            tmp_Hcode = (ushort)(65535 & this.mCodebuf >>> 32 - k);
+            this.skipKbits(k);
             var x = tmp_Hcode - min_code[k];
             var index_to_huff = this.WORD_hi_lo((byte)k, (byte)x);
             size_val = huff_values[index_to_huff];
@@ -670,7 +669,7 @@ namespace KVMClient.Core.VNC
             }
             else
             {
-                this.mDCTCoeff[position + 0] = previous_DC + this.getKbits((uint)size_val);
+                this.mDCTCoeff[position + 0] = previous_DC + this.getKbits(size_val);
                 this.previous_DC = this.mDCTCoeff[position + 0];
             }
             min_code = HTAC[AC_nr].minor_code;
@@ -678,10 +677,10 @@ namespace KVMClient.Core.VNC
             nr = 1;
             do
             {
-                k = HTAC[AC_nr].table_len[(ushort)(65535 & (this.mCodebuf >>> 16))];
-                tmp_Hcode = (ushort)(65535 & (this.mCodebuf >>> 32 - k));
-                this.skipKbits((uint)k);
-                byte_temp = huff_values[this.WORD_hi_lo((byte)k, (byte)(255 & (tmp_Hcode - min_code[k])))];
+                k = HTAC[AC_nr].table_len[65535 & this.mCodebuf >>> 16];
+                tmp_Hcode = (ushort)(65535 & this.mCodebuf >>> 32 - k);
+                this.skipKbits(k);
+                byte_temp = huff_values[this.WORD_hi_lo((byte)k, (byte)(255 & tmp_Hcode - min_code[k]))];
                 size_val = byte_temp & 15;
                 count_0 = byte_temp >>> 4;
                 if (size_val == 0)
@@ -693,7 +692,7 @@ namespace KVMClient.Core.VNC
                 else
                 {
                     nr += count_0;
-                    this.mDCTCoeff[position + dezigzag[nr++]] = this.getKbits((uint)size_val);
+                    this.mDCTCoeff[position + dezigzag[nr++]] = this.getKbits(size_val);
                 }
             } while (nr < 64);
         }
@@ -703,14 +702,14 @@ namespace KVMClient.Core.VNC
             var newbits = this.mNewbits - walks;
             if (newbits <= 0)
             {
-                uint readbuf = this.GetQBytesFromBuffer(4);
+                int readbuf = this.GetQBytesFromBuffer(4);
                 this.mCodebuf = this.mCodebuf << walks | (this.mNewbuf | readbuf >>> this.mNewbits) >>> 32 - walks;
                 this.mNewbuf = readbuf << walks - this.mNewbits;
                 this.mNewbits = 32 + newbits;
             }
             else
             {
-                this.mCodebuf = this.mCodebuf << walks | this.mNewbuf >>> 32 - walks;
+                this.mCodebuf = (this.mCodebuf << walks) | this.mNewbuf >>> (32 - walks);
                 this.mNewbuf = this.mNewbuf << walks;
                 this.mNewbits = newbits;
             }
@@ -736,7 +735,7 @@ namespace KVMClient.Core.VNC
             this.load_advance_quant_tableCb(this.mQT[3]);
         }
 
-        private void set_quant_table(int[] basic_table, int scale_factor, int[] newtable)
+        private void set_quant_table(int[] basic_table, int scale_factor, ref int[] newtable)
         {
             int i;
             int temp;
@@ -752,6 +751,7 @@ namespace KVMClient.Core.VNC
         }
         private void load_quant_table(double[] quant_table)
         {
+            int j, row, col;
             int[] tempQT = new int[64];
             switch (this.mYSelector)
             {
@@ -792,7 +792,18 @@ namespace KVMClient.Core.VNC
                     this.std_luminance_qt = Tbl_Q11Y;
                     break;
             }
-            set_quant_table(this.std_luminance_qt, this.mScaleFactor, tempQT);
+            set_quant_table(this.std_luminance_qt, this.mScaleFactor, ref tempQT);
+
+            for (j = 0; j <= 63; j++)
+                quant_table[j] = tempQT[zigzag[j]];
+            j = 0;
+            for (row = 0; row <= 7; row++)
+                for (col = 0; col <= 7; col++)
+                {
+                    quant_table[j] = quant_table[j] * scalefactor[row] * scalefactor[col] * 65536;
+                    j++;
+                }
+            this.mCurBytePos += 64;
         }
         private void load_quant_tableCb(double[] quant_table)
         {
@@ -859,7 +870,7 @@ namespace KVMClient.Core.VNC
                 }
             }
 
-            this.set_quant_table(this.std_chrominance_qt, this.mAdvanceScaleFactorUV, tempQT);
+            this.set_quant_table(this.std_chrominance_qt, this.mAdvanceScaleFactorUV, ref tempQT);
             for (j = 0; j <= 63; j++)
                 quant_table[j] = tempQT[zigzag[j]];
             j = 0;
@@ -928,7 +939,7 @@ namespace KVMClient.Core.VNC
                     break;
             }
 
-            set_quant_table(std_luminance_qt, mAdvanceScaleFactor, tempQT);
+            set_quant_table(std_luminance_qt, mAdvanceScaleFactor, ref tempQT);
             for (j = 0; j <= 63; j++)
                 quant_table[j] = tempQT[zigzag[j]];
             j = 0;
@@ -1004,7 +1015,7 @@ namespace KVMClient.Core.VNC
                         break;
                 }
             }
-            this.set_quant_table(std_chrominance_qt, this.mAdvanceScaleFactorUV, tempQT);
+            this.set_quant_table(std_chrominance_qt, this.mAdvanceScaleFactorUV, ref tempQT);
             for (j = 0; j <= 63; j++)
                 quant_table[j] = tempQT[zigzag[j]];
             j = 0;
@@ -1195,7 +1206,8 @@ namespace KVMClient.Core.VNC
             var nScale = 1 << 16;
             var nHalf = nScale >> 1;
             double result = x * nScale + .5;
-            return (int)Math.Ceiling(result);
+            var r= (int)result;
+            return r;
         }
         private void Init_Color_Table()
         {
@@ -1240,7 +1252,7 @@ namespace KVMClient.Core.VNC
         public byte[] table_length = new byte[256];
         public byte[] table_len = new byte[65536];
         public byte[] V = new byte[65536];
-        public ushort[] minor_code = new ushort[17 * 2];
-        public ushort[] major_code = new ushort[17 * 2];
+        public ushort[] minor_code = new ushort[17];
+        public ushort[] major_code = new ushort[17];
     }
 }
