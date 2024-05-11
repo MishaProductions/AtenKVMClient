@@ -616,7 +616,21 @@ namespace KVMClient.Core.IPMI.HTTP
 
             if (x.Contains("File Not Found"))
             {
-                throw new Exception("Please switch to \"JAVA plug-in\" in BMC.");
+                response2 = await client.GetAsync("https://" + Host + "/cgi/url_redirect.cgi?url_name=man_ikvm_html5_bootstrap#");
+                x = await response2.Content.ReadAsStringAsync();
+
+                var proper = x.Replace("</html>", "");
+                foreach (var item in proper.Split('\n'))
+                {
+                    var start = item.IndexOf("entry_value");
+                    if (start != -1)
+                    {
+                        var val = item.IndexOf("value=\"") + 7;
+                        var end = item.IndexOf("\">");
+                        string sessionString = item.Substring(val, end-val);
+                        return new KvmSession() { Username = sessionString, Password = "" };
+                    }
+                }
             }
 
             XmlDocument xmlDoc = new();

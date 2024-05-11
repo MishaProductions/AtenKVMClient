@@ -7,12 +7,12 @@ namespace KVMClient.Core.VNC
     /// </summary>
     public partial class Ast2100Decoder
     {
-        private int width;
-        private int height;
+        private int mWidth;
+        private int mHeight;
         private byte[] buffer = new byte[0];
         private int mIndex;
-        private int mCodebuf;
-        private int mNewbuf;
+        private uint mCodebuf;
+        private uint mNewbuf;
         private int mYSelector;
         private int mUVSelector;
         private int mYUVMode;
@@ -28,7 +28,7 @@ namespace KVMClient.Core.VNC
         private int mCrACnr;
         private int mMapping;
         private int mOldMode420;
-        private int mMode420;
+        private int mMode420 = 1;
         private int mOldYSelector;
         private int mScaleFactor;
         private int mScaleFactorUV;
@@ -36,9 +36,9 @@ namespace KVMClient.Core.VNC
         private int mSharpModeSelection;
         private int mAdvanceScaleFactor;
         private int mAdvanceScaleFactorUV;
-        private int mTxb;
-        private int mTyb;
-        private int mNewbits;
+        private uint mTxb;
+        private uint mTyb;
+        private int mNewbits = 0;
         private int mDCY;
         private int mDCCb;
         private int mDCCr;
@@ -53,6 +53,7 @@ namespace KVMClient.Core.VNC
         private int[] std_chrominance_qt;
         private int mGreyMode = 0;
         private byte[] mTileYuv = new byte[768];
+        private int previous_DC = 0;
 
         private ushort[] mRlimitTable = new ushort[5 * 256 + 128];
         private int mRlimitTable_index = 256;
@@ -65,12 +66,17 @@ namespace KVMClient.Core.VNC
 
         private int[] mColorBuf = new int[4 * 4];
         private int[] decodeColorIndex = new int[4];
-        private int bitmapBits;
+        //private int bitmapBits;
         private bool HT_init = false;
         private int mTmpWidth;
         private int mTmpHeight;
         private int[] mDCTCoeff = new int[384];
         private Ast2100HuffmanTable HT_ref = new Ast2100HuffmanTable();
+
+        private uint[] mDecode_Color_Index = new uint[4 * 4];
+        private uint mDecode_Color_BitMapBits = 0;
+
+        private uint[] mWorkspace = new uint[64 * 4];
 
         public Ast2100Decoder()
         {
@@ -79,14 +85,14 @@ namespace KVMClient.Core.VNC
                 this.mQT[i] = new double[64];
         }
 
-        private int GetQBytesFromBuffer(int len)
+        private uint GetQBytesFromBuffer(int len)
         {
-            int result = 0;
-            for (int i = 0; i < len; i++)
+            uint result = 0;
+            for (uint i = 0; i < len; i++)
             {
                 if (mIndex < buffer.Length)
                 {
-                    result |= buffer[mIndex++] << 8 * i;
+                    result |= ((uint)buffer[mIndex++] << 8) * i;
                 }
                 else
                 {
@@ -99,11 +105,15 @@ namespace KVMClient.Core.VNC
         {
             return x >= a && x <= b;
         }
-        private byte[] mOutBuffer = new byte[0];
-        public void Decode(byte[] data, int width, int height)
+        public byte[] mOutBuffer = new byte[0];
+        private int mTwb;
+        private int mThb;
+        private int mThw;
+
+        public bool Decode(byte[] data, int width, int height)
         {
-            this.width = width;
-            this.height = height;
+            this.mWidth = width;
+            this.mHeight = height;
             this.buffer = data;
 
             int MB = width * height / 64;
@@ -112,6 +122,7 @@ namespace KVMClient.Core.VNC
 
             SetOptions();
             VQInitialize();
+            set_tmp_width_height(mMode420, width, height, mTmpWidth, mTmpHeight);
 
             mOutBuffer = new byte[width * height];
             mAdvanceScaleFactor = 16;
@@ -143,20 +154,20 @@ namespace KVMClient.Core.VNC
             int block_index = 0;
             do
             {
-                if ((mCodebuf >> 28 & BLOCK_HEADER_MASK) == JPEG_NO_SKIP_CODE)
+                if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == JPEG_NO_SKIP_CODE)
                 {
+                    Console.WriteLine("JPEG_NO_SKIP_CODE");
                     updatereadbuf(BLOCK_AST2100_START_LENGTH);
                     Decompress(this.mTxb, this.mTyb, this.mOutBuffer, 0);
                     MoveBlockIndex();
 
-                    Console.WriteLine("JPEG_NO_SKIP_CODE");
                 }
-                else if ((mCodebuf >> 28 & BLOCK_HEADER_MASK) == FRAME_END_CODE)
+                else if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == FRAME_END_CODE)
                 {
                     // end of frame
-                    return;
+                    return true;
                 }
-                else if ((mCodebuf >> 28 & BLOCK_HEADER_MASK) == JPEG_SKIP_CODE)
+                else if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == JPEG_SKIP_CODE)
                 {
                     Console.WriteLine("JPEG_SKIP_CODE");
 
@@ -164,49 +175,73 @@ namespace KVMClient.Core.VNC
                     Decompress(this.mTxb, this.mTyb, this.mOutBuffer, 0);
                     MoveBlockIndex();
                 }
-                else if ((mCodebuf >> 28 & BLOCK_HEADER_MASK) == VQ_NO_SKIP_1_COLOR_CODE)
+                else if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == VQ_NO_SKIP_1_COLOR_CODE)
                 {
                     Console.WriteLine("VQ_NO_SKIP_1_COLOR_CODE");
 
                     updatereadbuf(BLOCK_AST2100_START_LENGTH);
-                    throw new NotImplementedException();
+                    mDecode_Color_BitMapBits = 0;
+                    this.VQ_ColorUpdate(1);
+                    this.VQ_Decompress(this.mTxb, this.mTyb, this.mOutBuffer, 0);
+                    this.MoveBlockIndex();
                 }
-                else if ((mCodebuf >> 28 & BLOCK_HEADER_MASK) == VQ_SKIP_1_COLOR_CODE)
+                else if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == VQ_SKIP_1_COLOR_CODE)
                 {
                     Console.WriteLine("VQ_SKIP_1_COLOR_CODE");
 
-                    updatereadbuf(BLOCK_AST2100_SKIP_LENGTH);
-                    throw new NotImplementedException();
+                    this.mTxb = (this.mCodebuf & 267386880) >>> 20;
+                    this.mTyb = (this.mCodebuf & 1044480) >>> 12;
+                    this.updatereadbuf(BLOCK_AST2100_SKIP_LENGTH);
+                    mDecode_Color_BitMapBits = 0;
+                    this.VQ_ColorUpdate(1);
+                    this.VQ_Decompress(this.mTxb, this.mTyb, this.mOutBuffer, 0);
+                    this.MoveBlockIndex();
                 }
-                else if ((mCodebuf >> 28 & BLOCK_HEADER_MASK) == VQ_NO_SKIP_2_COLOR_CODE)
+                else if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == VQ_NO_SKIP_2_COLOR_CODE)
                 {
                     Console.WriteLine("VQ_NO_SKIP_2_COLOR_CODE");
 
                     updatereadbuf(BLOCK_AST2100_START_LENGTH);
-                    throw new NotImplementedException();
+                    mDecode_Color_BitMapBits = 1;
+                    this.VQ_ColorUpdate(2);
+                    this.VQ_Decompress(this.mTxb, this.mTyb, this.mOutBuffer, 0);
+                    this.MoveBlockIndex();
                 }
-                else if ((mCodebuf >> 28 & BLOCK_HEADER_MASK) == VQ_SKIP_2_COLOR_CODE)
+                else if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == VQ_SKIP_2_COLOR_CODE)
                 {
                     Console.WriteLine("VQ_SKIP_2_COLOR_CODE");
 
-                    updatereadbuf(BLOCK_AST2100_SKIP_LENGTH);
-                    throw new NotImplementedException();
+                    this.mTxb = (this.mCodebuf & 267386880) >>> 20;
+                    this.mTyb = (this.mCodebuf & 1044480) >>> 12;
+                    this.updatereadbuf(BLOCK_AST2100_SKIP_LENGTH);
+                    mDecode_Color_BitMapBits = 1;
+                    this.VQ_ColorUpdate(2);
+                    this.VQ_Decompress(this.mTxb, this.mTyb, this.mOutBuffer, 0);
+                    this.MoveBlockIndex();
                 }
-                else if ((mCodebuf >> 28 & BLOCK_HEADER_MASK) == VQ_NO_SKIP_4_COLOR_CODE)
+                else if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == VQ_NO_SKIP_4_COLOR_CODE)
                 {
                     Console.WriteLine("VQ_NO_SKIP_4_COLOR_CODE");
 
-                    updatereadbuf(BLOCK_AST2100_START_LENGTH);
-                    throw new NotImplementedException();
+                    this.updatereadbuf(BLOCK_AST2100_START_LENGTH);
+                    mDecode_Color_BitMapBits = 2;
+                    this.VQ_ColorUpdate(4);
+                    this.VQ_Decompress(this.mTxb, this.mTyb, this.mOutBuffer, 0);
+                    this.MoveBlockIndex();
                 }
-                else if ((mCodebuf >> 28 & BLOCK_HEADER_MASK) == VQ_SKIP_4_COLOR_CODE)
+                else if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == VQ_SKIP_4_COLOR_CODE)
                 {
                     Console.WriteLine("VQ_SKIP_4_COLOR_CODE");
 
-                    updatereadbuf(BLOCK_AST2100_SKIP_LENGTH);
-                    throw new NotImplementedException();
+                    this.mTxb = (this.mCodebuf & 267386880) >>> 20;
+                    this.mTyb = (this.mCodebuf & 1044480) >>> 12;
+                    this.updatereadbuf(BLOCK_AST2100_SKIP_LENGTH);
+                    mDecode_Color_BitMapBits = 2;
+                    this.VQ_ColorUpdate(4);
+                    this.VQ_Decompress(this.mTxb, this.mTyb, this.mOutBuffer, 0);
+                    this.MoveBlockIndex();
                 }
-                else if ((mCodebuf >> 28 & BLOCK_HEADER_MASK) == LOW_JPEG_NO_SKIP_CODE)
+                else if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == LOW_JPEG_NO_SKIP_CODE)
                 {
                     Console.WriteLine("LOW_JPEG_NO_SKIP_CODE");
 
@@ -214,7 +249,7 @@ namespace KVMClient.Core.VNC
                     this.Decompress(this.mTxb, this.mTyb, this.mOutBuffer, 2);
                     this.MoveBlockIndex();
                 }
-                else if ((mCodebuf >> 28 & BLOCK_HEADER_MASK) == LOW_JPEG_SKIP_CODE)
+                else if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == LOW_JPEG_SKIP_CODE)
                 {
                     Console.WriteLine("LOW_JPEG_SKIP_CODE");
 
@@ -230,11 +265,70 @@ namespace KVMClient.Core.VNC
                 }
                 block_index++;
             } while (block_index <= MB);
+
+            return true;
         }
 
-        private void Decompress(int txb, int tyb, byte[] outBuf, int QT_TableSelection)
+        private void VQ_Decompress(uint txb, uint tyb, byte[] outBuf, int QT_TableSelection)
         {
-            var ptr = 0;
+            int ptr_index, i;
+            var byTileYuv = this.mTileYuv;
+            ushort Data;
+            ptr_index = 0;
+            if (mDecode_Color_BitMapBits == 0)
+                for (i = 0; i < 64; i++)
+                {
+                    byTileYuv[ptr_index + 0] = (byte)((mColorBuf[mDecode_Color_Index[0]] & 16711680) >> 16);
+                    byTileYuv[ptr_index + 64] = (byte)((mColorBuf[mDecode_Color_Index[0]] & 65280) >> 8);
+                    byTileYuv[ptr_index + 128] = (byte)(mColorBuf[mDecode_Color_Index[0]] & 255);
+                    ptr_index += 1;
+                }
+            else
+            {
+                for (i = 0; i < 64; i++)
+                {
+                    Data = (ushort)(65535 & this.mCodebuf >> 32 - (int)mDecode_Color_BitMapBits);
+                    var e = mDecode_Color_Index[Data];
+                    var b = mColorBuf[e];
+                    byTileYuv[ptr_index + 0] = (byte)((b & 16711680) >> 16);
+                    byTileYuv[ptr_index + 64] = (byte)((b & 65280) >> 8);
+                    byTileYuv[ptr_index + 128] = (byte)(b & 255);
+                    ptr_index += 1;
+                    this.skipKbits(mDecode_Color_BitMapBits);
+                }
+            }
+        }
+
+        private void skipKbits(uint mDecode_Color_BitMapBits)
+        {
+            updatereadbuf((int)mDecode_Color_BitMapBits);
+        }
+        private ushort getKbits(uint k)
+        {
+            ushort signed_wordvalue = (ushort)(65535 & ((this.mCodebuf >>> 32) - k));
+            if ((((1 << (int)k) - 1) & signed_wordvalue) == 0)
+                signed_wordvalue = (ushort)(signed_wordvalue + this.mNegPow2[k]);
+            this.skipKbits(k);
+            return signed_wordvalue;
+        }
+
+        private void VQ_ColorUpdate(int skip_bits)
+        {
+            for (int i = 0; i < skip_bits; i++)
+            {
+                mDecode_Color_Index[i] = (uint)(this.mCodebuf >> 29 & VQ_INDEX_MASK);
+                if ((this.mCodebuf >> 31 & VQ_HEADER_MASK) == VQ_NO_UPDATE_HEADER)
+                    this.updatereadbuf(VQ_NO_UPDATE_LENGTH);
+                else
+                {
+                    mColorBuf[mDecode_Color_Index[i]] = (int)((this.mCodebuf >> 5) & VQ_COLOR_MASK);
+                    this.updatereadbuf(VQ_UPDATE_LENGTH);
+                }
+            }
+        }
+
+        private void Decompress(uint txb, uint tyb, byte[] outBuf, int QT_TableSelection)
+        {
             var byTileYuv = this.mTileYuv;
             var ptr_index = 0;
             var mGreyMode = this.mGreyMode;
@@ -248,26 +342,360 @@ namespace KVMClient.Core.VNC
 
             if (mGreyMode == 0)
             {
-
+                ptr_index = 0;
+                this.process_Huffman_data_unit(this.mYDCnr, this.mYACnr, this.mDCY, ptr_index);
+                this.mDCY = this.previous_DC;
+                ptr_index += 64;
+                if (this.mMode420 == 1)
+                {
+                    this.process_Huffman_data_unit(this.mYDCnr, this.mYACnr, this.mDCY, ptr_index);
+                    this.mDCY = this.previous_DC;
+                    ptr_index += 64;
+                    this.process_Huffman_data_unit(this.mYDCnr, this.mYACnr, this.mDCY, ptr_index);
+                    this.mDCY = this.previous_DC;
+                    ptr_index += 64;
+                    this.process_Huffman_data_unit(this.mYDCnr, this.mYACnr, this.mDCY, ptr_index);
+                    this.mDCY = this.previous_DC;
+                    ptr_index += 64;
+                    this.process_Huffman_data_unit(this.mCbDCnr, this.mCbACnr, this.mDCCb, ptr_index);
+                    this.mDCCb = this.previous_DC;
+                    ptr_index += 64;
+                    this.process_Huffman_data_unit(this.mCrDCnr, this.mCrACnr, this.mDCCr, ptr_index);
+                    this.mDCCr = this.previous_DC;
+                }
+                else
+                {
+                    this.process_Huffman_data_unit(this.mCbDCnr, this.mCbACnr, this.mDCCb, ptr_index);
+                    this.mDCCb = this.previous_DC;
+                    ptr_index += 64;
+                    this.process_Huffman_data_unit(this.mCrDCnr, this.mCrACnr, this.mDCCr, ptr_index);
+                    this.mDCCr = this.previous_DC;
+                }
             }
             else
             {
                 // grey mode is never assigned
-                throw new NotImplementedException();
+                ptr_index = 0;
+                this.process_Huffman_data_unit(this.mYDCnr, this.mYACnr, this.mDCY, ptr_index);
+                this.mDCY = this.previous_DC;
+                ptr_index += 64;
+                if (this.mMode420 == 1)
+                {
+                    this.process_Huffman_data_unit(this.mYDCnr, this.mYACnr, this.mDCY, ptr_index);
+                    this.mDCY = this.previous_DC;
+                    ptr_index += 64;
+                    this.process_Huffman_data_unit(this.mYDCnr, this.mYACnr, this.mDCY, ptr_index);
+                    this.mDCY = this.previous_DC;
+                    ptr_index += 64;
+                    this.process_Huffman_data_unit(this.mYDCnr, this.mYACnr, this.mDCY, ptr_index);
+                    this.mDCY = this.previous_DC;
+                    ptr_index += 64;
+                    this.process_Huffman_data_unit(this.mCbDCnr, this.mCbACnr, this.mDCCb, ptr_index);
+                    this.mDCCb = this.previous_DC;
+                    ptr_index += 64;
+                    this.process_Huffman_data_unit(this.mCrDCnr, this.mCrACnr, this.mDCCr, ptr_index);
+                    this.mDCCr = this.previous_DC;
+                }
+                else
+                {
+                    this.process_Huffman_data_unit(this.mCbDCnr, this.mCbACnr, this.mDCCb, ptr_index);
+                    this.mDCCb = this.previous_DC;
+                    ptr_index += 64;
+                    this.process_Huffman_data_unit(this.mCrDCnr, this.mCrACnr, this.mDCCr, ptr_index);
+                    this.mDCCr = this.previous_DC;
+                }
             }
 
 
             if (mGreyMode == 0)
             {
-
+                byte[] ptr = byTileYuv;
+                ptr_index = 0;
+                IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection);
+                ptr_index += 64;
+                if (this.mMode420 == 1)
+                {
+                    IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection);
+                    ptr_index += 64;
+                    IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection);
+                    ptr_index += 64;
+                    IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection);
+                    ptr_index += 64;
+                    IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection + 1);
+                    ptr_index += 64;
+                    IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection + 1);
+                }
+                else
+                {
+                    IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection + 1);
+                    ptr_index += 64;
+                    IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection + 1);
+                }
             }
             else
             {
                 // grey mode is never assigned
-                throw new NotImplementedException();
+
+                byte[] ptr = byTileYuv;
+                ptr_index = 0;
+                this.IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection);
+                ptr_index += 64;
+                if (this.mMode420 == 1)
+                {
+                    this.IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection);
+                    ptr_index += 64;
+                    this.IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection);
+                    ptr_index += 64;
+                    this.IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection + 1);
+                    ptr_index += 64;
+                    this.IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection + 1);
+                    ptr_index += 64;
+                    this.IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection + 1);
+                }
+                else
+                {
+                    this.IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection + 1);
+                    ptr_index += 64;
+                    this.IDCT_transform(this.mDCTCoeff, ptr, ptr_index, QT_TableSelection + 1);
+                }
             }
 
-            // TODO:   this.YUVToRGB(txb, tyb, outBuf);
+            YUVToRGB(txb, tyb, outBuf);
+        }
+        private void YUVToRGB(uint txb, uint tyb, byte[] pBgr)
+        {
+            uint cb, cr, m, n;
+            if (mMode420 == 0)
+            {
+
+            }
+            else
+            {
+                int[] mPy420Index = new int[4];
+
+                uint pixel_x = txb << 4;
+                uint pixel_y = tyb << 4;
+                uint pos = (uint)(pixel_y * this.mWidth + pixel_x);
+
+                for (uint j = 0; j < 16; j++)
+                {
+                    for (uint i = 0; i < 16; i++)
+                    {
+                        var index = (j >> 3) * 2 + (i >> 3);
+
+                        var off = GetmPy420Offset(index);
+
+                        var y = mTileYuv[off + mPy420Index[index]++];
+
+                        if (mGreyMode == 0)
+                        {
+                            m = (j >> 1 << 3) + (i >> 1);
+                            cb = mTileYuv[256 + m]; // pcb420
+                            cr = mTileYuv[320 + m]; // pcr420
+                        }
+                        else
+                        {
+                            cb = 128;
+                            cr = 128;
+                        }
+
+                        n = pos + i;
+                        pBgr[(n << 2) + 2] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCbToB[cb]];
+                        pBgr[(n << 2) + 1] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCbToG[cb] + this.mCrToG[cr]];
+                        pBgr[(n << 2) + 0] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCrToR[cr]];
+                        pBgr[(n << 2) + 3] = 255;
+                    }
+
+                    pos += (uint)mWidth;
+                }
+            }
+        }
+
+        private int GetmPy420Offset(uint index)
+        {
+            switch (index)
+            {
+                case 0:
+                    return 0;
+                case 1:
+                    return 64;
+                case 2:
+                    return 128;
+                case 3:
+                    return 192;
+                default:
+                    throw new NotImplementedException();
+                    break;
+            }
+        }
+
+        private void IDCT_transform(int[] coef, byte[] data, int index, int nBlock)
+        {
+            var FIX_1_082392200 = 277;
+            var FIX_1_414213562 = 362;
+            var FIX_1_847759065 = 473;
+            var FIX_2_613125930 = 669;
+            int tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
+            int tmp10, tmp11, tmp12, tmp13;
+            uint z5, z10, z11, z12, z13;
+            var inptr = coef;
+            var quantptr = this.mQT[nBlock];
+            var wsptr = this.mWorkspace;
+            byte[] outptr;
+            uint ctr, dcval;
+            var ptr_index = 0;
+            for (ctr = 0; ctr < 8; ctr++)
+            {
+                if ((inptr[index + ctr + 8] | inptr[index + ctr + 16] | inptr[index + ctr + 24] | inptr[index + ctr + 32] | inptr[index + ctr + 40] | inptr[index + ctr + 48] | inptr[index + ctr + 56]) == 0)
+                {
+                    dcval = (uint)(4294967295 & inptr[index + ctr] * (int)quantptr[ctr] >> 16);
+                    wsptr[ctr] = dcval;
+                    wsptr[ctr + 8] = dcval;
+                    wsptr[ctr + 16] = dcval;
+                    wsptr[ctr + 24] = dcval;
+                    wsptr[ctr + 32] = dcval;
+                    wsptr[ctr + 40] = dcval;
+                    wsptr[ctr + 48] = dcval;
+                    wsptr[ctr + 56] = dcval;
+                    continue;
+                }
+                tmp0 = inptr[index + ctr] * (int)quantptr[ctr] >> 16;
+                tmp1 = inptr[index + ctr + 16] * (int)quantptr[ctr + 16] >> 16;
+                tmp2 = inptr[index + ctr + 32] * (int)quantptr[ctr + 32] >> 16;
+                tmp3 = inptr[index + ctr + 48] * (int)quantptr[ctr + 48] >> 16;
+                tmp10 = tmp0 + tmp2;
+                tmp11 = tmp0 - tmp2;
+                tmp13 = tmp1 + tmp3;
+                tmp12 = this.MULTIPLY((uint)(tmp1 - tmp3), FIX_1_414213562) - tmp13;
+                tmp0 = tmp10 + tmp13;
+                tmp3 = tmp10 - tmp13;
+                tmp1 = tmp11 + tmp12;
+                tmp2 = tmp11 - tmp12;
+                tmp4 = inptr[index + ctr + 8] * (int)quantptr[ctr + 8] >> 16;
+                tmp5 = inptr[index + ctr + 24] * (int)quantptr[ctr + 24] >> 16;
+                tmp6 = inptr[index + ctr + 40] * (int)quantptr[ctr + 40] >> 16;
+                tmp7 = inptr[index + ctr + 56] * (int)quantptr[ctr + 56] >> 16;
+                z13 = (uint)(tmp6 + tmp5);
+                z10 = (uint)(tmp6 - tmp5);
+                z11 = (uint)(tmp4 + tmp7);
+                z12 = (uint)(tmp4 - tmp7);
+                tmp7 = (int)(z11 + z13);
+                tmp11 = this.MULTIPLY(z11 - z13, FIX_1_414213562);
+                z5 = (uint)this.MULTIPLY(z10 + z12, FIX_1_847759065);
+                tmp10 = (int)(this.MULTIPLY(z12, FIX_1_082392200) - z5);
+                tmp12 = (int)(this.MULTIPLY(z10, -FIX_2_613125930) + z5);
+                tmp6 = tmp12 - tmp7;
+                tmp5 = tmp11 - tmp6;
+                tmp4 = tmp10 + tmp5;
+                wsptr[ctr] = (uint)(tmp0 + tmp7);
+                wsptr[ctr + 56] = (uint)(tmp0 - tmp7);
+                wsptr[ctr + 8] = (uint)(tmp1 + tmp6);
+                wsptr[ctr + 48] = (uint)(tmp1 - tmp6);
+                wsptr[ctr + 16] = (uint)(tmp2 + tmp5);
+                wsptr[ctr + 40] = (uint)(tmp2 - tmp5);
+                wsptr[ctr + 32] = (uint)(tmp3 + tmp4);
+                wsptr[ctr + 24] = (uint)(tmp3 - tmp4);
+            }
+            outptr = data;
+            uint outptr_index;
+            for (ctr = 0; ctr < 8; ctr++)
+            {
+                outptr_index = ctr * 8;
+                tmp10 = (int)(wsptr[outptr_index + 0] + wsptr[outptr_index + 4]);
+                tmp11 = (int)(wsptr[outptr_index + 0] - wsptr[outptr_index + 4]);
+                tmp13 = (int)(wsptr[outptr_index + 2] + wsptr[outptr_index + 6]);
+                tmp12 = this.MULTIPLY(wsptr[outptr_index + 2] - wsptr[outptr_index + 6], FIX_1_414213562) - tmp13;
+                tmp0 = tmp10 + tmp13;
+                tmp3 = tmp10 - tmp13;
+                tmp1 = tmp11 + tmp12;
+                tmp2 = tmp11 - tmp12;
+                z13 = wsptr[outptr_index + 5] + wsptr[outptr_index + 3];
+                z10 = wsptr[outptr_index + 5] - wsptr[outptr_index + 3];
+                z11 = wsptr[outptr_index + 1] + wsptr[outptr_index + 7];
+                z12 = wsptr[outptr_index + 1] - wsptr[outptr_index + 7];
+                tmp7 = (int)(z11 + z13);
+                tmp11 = this.MULTIPLY((uint)(z11 - z13), FIX_1_414213562);
+                z5 = (uint)(this.MULTIPLY((uint)(z10 + z12), FIX_1_847759065));
+                tmp10 = (int)(this.MULTIPLY((uint)z12, FIX_1_082392200) - z5);
+                tmp12 = (int)(this.MULTIPLY((uint)z10, -FIX_2_613125930) + z5);
+                tmp6 = tmp12 - tmp7;
+                tmp5 = tmp11 - tmp6;
+                tmp4 = tmp10 + tmp5;
+                outptr[index + outptr_index + 0] = (byte)this.mRlimitTable[384 + IDESCALE(tmp0 + tmp7, 3) & 1023];
+                outptr[index + outptr_index + 7] = (byte)this.mRlimitTable[384 + IDESCALE(tmp0 - tmp7, 3) & 1023];
+                outptr[index + outptr_index + 1] = (byte)this.mRlimitTable[384 + IDESCALE(tmp1 + tmp6, 3) & 1023];
+                outptr[index + outptr_index + 6] = (byte)this.mRlimitTable[384 + IDESCALE(tmp1 - tmp6, 3) & 1023];
+                outptr[index + outptr_index + 2] = (byte)this.mRlimitTable[384 + IDESCALE(tmp2 + tmp5, 3) & 1023];
+                outptr[index + outptr_index + 5] = (byte)this.mRlimitTable[384 + IDESCALE(tmp2 - tmp5, 3) & 1023];
+                outptr[index + outptr_index + 4] = (byte)this.mRlimitTable[384 + IDESCALE(tmp3 + tmp4, 3) & 1023];
+                outptr[index + outptr_index + 3] = (byte)this.mRlimitTable[384 + IDESCALE(tmp3 - tmp4, 3) & 1023];
+            }
+        }
+
+        private int MULTIPLY(uint vari, int cons)
+        {
+            return (int)(vari * cons >> 8);
+        }
+        private int IDESCALE(int x, int n)
+        {
+            return x >> n;
+        }
+
+        private void process_Huffman_data_unit(int DC_nr, int AC_nr, int previous_DC, int position)
+        {
+            int nr, k;
+            int size_val, count_0;
+            ushort[] min_code;
+            byte[] huff_values;
+            int byte_temp;
+            ushort tmp_Hcode;
+            var HT_ref = this.HT_ref;
+            var HTDC = HT_ref.HTDC;
+            var HTAC = HT_ref.HTAC;
+
+
+            min_code = HTDC[DC_nr].minor_code;
+            huff_values = HTDC[DC_nr].V;
+            nr = 0;
+            k = HTDC[DC_nr].table_len[this.mCodebuf >>> 16];
+            tmp_Hcode = (ushort)(65535 & (this.mCodebuf >>> 32 - k));
+            this.skipKbits((uint)k);
+            var x = tmp_Hcode - min_code[k];
+            var index_to_huff = this.WORD_hi_lo((byte)k, (byte)x);
+            size_val = huff_values[index_to_huff];
+            if (size_val == 0)
+            {
+                this.mDCTCoeff[position + 0] = previous_DC;
+                this.previous_DC = previous_DC;
+            }
+            else
+            {
+                this.mDCTCoeff[position + 0] = previous_DC + this.getKbits((uint)size_val);
+                this.previous_DC = this.mDCTCoeff[position + 0];
+            }
+            min_code = HTAC[AC_nr].minor_code;
+            huff_values = HTAC[AC_nr].V;
+            nr = 1;
+            do
+            {
+                k = HTAC[AC_nr].table_len[(ushort)(65535 & (this.mCodebuf >>> 16))];
+                tmp_Hcode = (ushort)(65535 & (this.mCodebuf >>> 32 - k));
+                this.skipKbits((uint)k);
+                byte_temp = huff_values[this.WORD_hi_lo((byte)k, (byte)(255 & (tmp_Hcode - min_code[k])))];
+                size_val = byte_temp & 15;
+                count_0 = byte_temp >>> 4;
+                if (size_val == 0)
+                {
+                    if (count_0 != 15)
+                        break;
+                    nr += 16;
+                }
+                else
+                {
+                    nr += count_0;
+                    this.mDCTCoeff[position + dezigzag[nr++]] = this.getKbits((uint)size_val);
+                }
+            } while (nr < 64);
         }
 
         private void updatereadbuf(int walks)
@@ -275,14 +703,14 @@ namespace KVMClient.Core.VNC
             var newbits = this.mNewbits - walks;
             if (newbits <= 0)
             {
-                int readbuf = this.GetQBytesFromBuffer(4);
-                this.mCodebuf = this.mCodebuf << walks | (this.mNewbuf | readbuf >> this.mNewbits) >>> 32 - walks;
+                uint readbuf = this.GetQBytesFromBuffer(4);
+                this.mCodebuf = this.mCodebuf << walks | (this.mNewbuf | readbuf >>> this.mNewbits) >>> 32 - walks;
                 this.mNewbuf = readbuf << walks - this.mNewbits;
                 this.mNewbits = 32 + newbits;
             }
             else
             {
-                this.mCodebuf = this.mCodebuf << walks | this.mNewbuf >> 32 - walks;
+                this.mCodebuf = this.mCodebuf << walks | this.mNewbuf >>> 32 - walks;
                 this.mNewbuf = this.mNewbuf << walks;
                 this.mNewbits = newbits;
             }
@@ -594,6 +1022,7 @@ namespace KVMClient.Core.VNC
             mUVSelector = buffer[1];
             mYUVMode = buffer[2] * 256 + buffer[3];
 
+            mNegPow2 = [0, -1, -3, -7, -15, -31, -63, -127, -255, -511, -1023, -2047, -4095, -8191, -16383, -32767];
             mYQnr = 0;
             mCbQnr = 1;
             mCrQnr = 1;
@@ -607,6 +1036,46 @@ namespace KVMClient.Core.VNC
             InitJpegTable();
             InitParameter();
 
+            // for some reason initparameter overwrites these
+            mTmpWidth = mWidth;
+            mTmpHeight = mHeight;
+            mYSelector = buffer[0];
+            mUVSelector = buffer[1];
+        }
+        private void set_tmp_width_height(int mMode420, int width, int height, int mTmpWidth, int mTmpHeight)
+        {
+            if (mMode420 == 1)
+            {
+                if ((this.mWidth % 16) != 0)
+                    this.mWidth = this.mWidth + 16 - this.mWidth % 16;
+                if ((this.mHeight % 16) != 0)
+                    this.mHeight = this.mHeight + 16 - this.mHeight % 16;
+                this.mTwb = 16;
+                this.mThb = 16;
+            }
+            else
+            {
+                if ((this.mWidth % 8) != 0)
+                    this.mWidth = this.mWidth + 8 - this.mWidth % 8;
+                if ((this.mHeight % 8) != 0)
+                    this.mHeight = this.mHeight + 8 - this.mHeight % 8;
+                this.mTwb = 8;
+                this.mThw = 8;
+            }
+            if (mMode420 == 1)
+            {
+                if ((this.mTmpWidth % 16) != 0)
+                    this.mTmpWidth = this.mTmpWidth + 16 - this.mTmpWidth % 16;
+                if ((this.mTmpHeight % 16) != 0)
+                    this.mTmpHeight = this.mTmpHeight + 16 - this.mTmpHeight % 16;
+            }
+            else
+            {
+                if ((this.mTmpWidth % 8) != 0)
+                    this.mTmpWidth = this.mTmpWidth + 8 - this.mTmpWidth % 8;
+                if ((this.mTmpHeight % 8) != 0)
+                    this.mTmpHeight = this.mTmpHeight + 8 - this.mTmpHeight % 8;
+            }
         }
 
         private void InitParameter()
@@ -629,8 +1098,8 @@ namespace KVMClient.Core.VNC
                 this.mMode420 = 0;
                 this.mOldYSelector = 255;
             }
-            mTmpWidth = width;
-            mTmpHeight = height;
+            mTmpWidth = mWidth;
+            mTmpHeight = mHeight;
 
             // todo is rfc key needed
 
@@ -674,9 +1143,9 @@ namespace KVMClient.Core.VNC
                 HT_init = true;
             }
         }
-        private int WORD_hi_lo(int byte_high, int byte_low)
+        private ushort WORD_hi_lo(byte byte_high, byte byte_low)
         {
-            return byte_high + (byte_low << 8);
+            return (ushort)(byte_high + (byte_low << 8));
         }
         private void load_Huffman_table(Huffman_Table HT, int[] nrcode, int[] value, int[] Huff_code)
         {
@@ -689,7 +1158,7 @@ namespace KVMClient.Core.VNC
             {
                 for (j = 0; j < HT.table_length[k]; j++)
                 {
-                    HT.V[this.WORD_hi_lo(k, j)] = (byte)value[i];
+                    HT.V[this.WORD_hi_lo((byte)k, (byte)j)] = (byte)value[i];
                     i++;
                 }
             }
