@@ -10,7 +10,7 @@ xmlns:uip="using:FluentAvalonia.UI.Controls.Primitives">
 	<Grid Background="Black">
 		<Grid.RowDefinitions>
 			<RowDefinition Height="auto"></RowDefinition>
-			<RowDefinition Height="auto"></RowDefinition>
+			<RowDefinition Height="*"></RowDefinition>
 		</Grid.RowDefinitions>
 
 		<Menu Grid.Row="0" x:Name="menuControl" >
@@ -27,8 +27,20 @@ xmlns:uip="using:FluentAvalonia.UI.Controls.Primitives">
 				<MenuItem Header="Exit" Click="Exit_Click"  Focusable="False"></MenuItem>
 			</Menu.Items>
 		</Menu>
-		<ScrollViewer Grid.Row="1">
-			<Image x:Name="DisplayImage"  Stretch="None" StretchDirection="Both" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.HorizontalScrollBarVisibility="Visible" Tapped="Image_Tapped"></Image>
+		<ScrollViewer Grid.Row="1" Focusable="False">
+			<Image x:Name="DisplayImage" 
+				   ScrollViewer.VerticalScrollBarVisibility="Visible" 
+				   ScrollViewer.HorizontalScrollBarVisibility="Visible" 
+				   Tapped="Image_Tapped"
+				   PointerWheelChanged="ScrollViewer_PointerWheelChanged"
+				   PointerMoved="Image_PointerMoved"
+				   PointerPressed="Image_PointerPressed"
+				   PointerReleased="Image_PointerReleased"
+				   VerticalAlignment="Top"
+				   HorizontalAlignment="Left"
+				   Stretch="None"
+				   StretchDirection="Both"
+				   Cursor="None"></Image>
 		</ScrollViewer>
 
 	</Grid>

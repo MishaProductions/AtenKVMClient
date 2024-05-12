@@ -6,20 +6,12 @@
 		xmlns:uip="using:FluentAvalonia.UI.Controls.Primitives"
         x:Class="KVMClient.MainWindow"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-		Title="Supermicro IPMI Client">
+		Title="Supermicro BMC Client">
 	<Grid>
 		<Grid.RowDefinitions>
 			<RowDefinition Height="Auto" />
 			<RowDefinition Height="*" />
 		</Grid.RowDefinitions>
-
-		<!--<ui:CommandBar Grid.Row="0" IsOpen="True">
-			<ui:CommandBar.PrimaryCommands>
-				<ui:CommandBarButton IconSource="Add" Label="Add host" Click="AddHost_Click"/>
-				<ui:CommandBarButton x:Name="BtnModifyHost" IconSource="Setting" Label="Modify" Click="ModifyHost_Click" IsEnabled="False"/>
-				<ui:CommandBarButton x:Name="BtnRemoveHost" IconSource="Remove" Label="Remove host" Click="RemoveHost_Click" IsEnabled="False"/>
-			</ui:CommandBar.PrimaryCommands>
-		</ui:CommandBar>-->
 
 		<Grid Grid.Row="1">
 			<Grid.ColumnDefinitions>
@@ -40,7 +32,7 @@
 						<ColumnDefinition Width="auto"></ColumnDefinition>
 					</Grid.ColumnDefinitions>
 					
-					<TextBlock Grid.Column="0" TextAlignment="Center" VerticalAlignment="Center">KVMClient ALPHA 0.05</TextBlock>
+					<TextBlock x:Name="VersionLabel" Grid.Column="0" TextAlignment="Center" VerticalAlignment="Center"></TextBlock>
 					<Button Grid.Column="2" Click="AddHost_Click">
 						<ui:SymbolIcon Symbol="Add"></ui:SymbolIcon>
 					</Button>

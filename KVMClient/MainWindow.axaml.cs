@@ -17,6 +17,7 @@ namespace KVMClient
             hosts.Tapped += Hosts_Tapped;
             mainFrame.Navigated += MainFrame_Navigated;
             mainFrame.CacheSize = 0;
+            VersionLabel.Text = Program.TitleBranding;
             Loaded += MainWindow_Loaded;
             NavToWelcome();
         }

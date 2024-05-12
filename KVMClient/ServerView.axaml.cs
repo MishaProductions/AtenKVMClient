@@ -223,7 +223,7 @@ public partial class ServerView : UserControl
         {
             if (sess == null)
             {
-                await new ContentDialog() { Content = "Failed to open KVM session:\n" + ex.ToString(), PrimaryButtonText = "OK", Title = "Connection failed" }.ShowAsync();
+                await new ContentDialog() { Content = "Failed to open KVM session:\n" + ex.ToString(), PrimaryButtonText = "OK", Title = "Failed to open KVM session" }.ShowAsync();
                 return;
             }
         }

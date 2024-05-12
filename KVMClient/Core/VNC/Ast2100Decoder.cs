@@ -10,7 +10,7 @@ namespace KVMClient.Core.VNC
     {
         private int mWidth;
         private int mHeight;
-        private byte[] buffer = new byte[0];
+        private byte[] buffer = Array.Empty<byte>();
         private int mIndex;
         private int mCodebuf;
         private int mNewbuf;
@@ -79,13 +79,16 @@ namespace KVMClient.Core.VNC
 
         private int[] mWorkspace = new int[64];
 
-        public byte[] mOutBuffer = new byte[0];
+        public byte[] mOutBuffer = Array.Empty<byte>();
         private int mTwb;
         private int mThb;
         private int mThw;
+
+        private int properWidth;
+        private int properHeight;
         public Ast2100Decoder()
         {
-            mNegPow2 = new float[] { 0, -1, -3, -7, -15, -31, -63, -127, -255, -511, -1023, -2047, -4095, -8191, -16383, -32767 };
+            mNegPow2 = [ 0, -1, -3, -7, -15, -31, -63, -127, -255, -511, -1023, -2047, -4095, -8191, -16383, -32767 ];
             for (var i = 0; i < 4; i++)
                 this.mQT[i] = new double[64];
         }
@@ -97,7 +100,7 @@ namespace KVMClient.Core.VNC
             {
                 if (mIndex < buffer.Length)
                 {
-                    result |= (int)buffer[mIndex++] << (8 * i); ;
+                    result |= buffer[mIndex++] << (8 * i);
                 }
                 else
                 {
@@ -107,8 +110,6 @@ namespace KVMClient.Core.VNC
             return result;
         }
 
-        private int properWidth;
-        private int properHeight;
         public bool Decode(byte[] data, int width, int height)
         {
             this.mWidth = width;
@@ -474,7 +475,36 @@ namespace KVMClient.Core.VNC
             uint cb, cr, m, n;
             if (mMode420 == 0)
             {
-
+                int pixel_x = txb << 3;
+                int pixel_y = tyb << 3;
+                uint pos = (uint)(pixel_y * this.mWidth + pixel_x);
+                for (uint j = 0; j < 8; j++)
+                {
+                    for (uint i = 0; i < 8; i++)
+                    {
+                        uint y = 0;
+                        if (this.mGreyMode == 0)
+                        {
+                            m = (j << 3) + i;
+                            y = mTileYuv[m];
+                            cb = mTileYuv[64 + m];
+                            cr = mTileYuv[128 + m];
+                        }
+                        else
+                        {
+                            m = (j << 3) + i;
+                            y = mTileYuv[m];
+                            cb = 128;
+                            cr = 128;
+                        }
+                        n = pos + i;
+                        pBgr[(n << 2) + 2] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCbToB[cb]];
+                        pBgr[(n << 2) + 1] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCbToG[cb] + this.mCrToG[cr]];
+                        pBgr[(n << 2) + 0] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCrToR[cr]];
+                        pBgr[(n << 2) + 3] = 255;
+                    }
+                    pos += (uint)this.mWidth;
+                }
             }
             else
             {

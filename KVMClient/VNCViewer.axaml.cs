@@ -50,7 +50,7 @@ namespace KVMClient
         private int lines = 0;
         private int bytes = 0;
         private bool IsAST24000 = false;
-        private Ast2100Decoder ast2100Decoder = new Ast2100Decoder();
+        private Ast2100Decoder? ast2100Decoder;
         private long FrameStart = 0;
         private long FrameEnd = 0;
         private bool useSSL = false;
@@ -103,7 +103,7 @@ namespace KVMClient
             }
             catch (Exception e)
             {
-                await new ContentDialog() { Content = "Connection to " + Host + ":5900 failed: " + e.Message, PrimaryButtonText = "OK" }.ShowAsync();
+                await new ContentDialog() { Content = "Connection to " + Host + ":5900 failed: " + e.Message, PrimaryButtonText = "OK" }.ShowAsync(this);
                 return;
             }
 
@@ -112,7 +112,7 @@ namespace KVMClient
 
             Title = "iKVM viewer - Connecting";
 
-            int delay = 2;
+            int delay = 5;
 
             bool trySsl = false;
             try
@@ -417,9 +417,10 @@ namespace KVMClient
             {
                 client.Close();
                 Debug.WriteLine(ex.ToString());
+                Console.WriteLine(ex.ToString());
                 Dispatcher.UIThread.InvokeAsync(async () =>
                 {
-                    await new ContentDialog() { Content = "A error has occured while recieving data:\n" + ex.ToString(), PrimaryButtonText = "OK" }.ShowAsync();
+                    await new ContentDialog() { Content = "A error has occured while recieving data:\n" + ex.ToString(), PrimaryButtonText = "OK" }.ShowAsync(this);
                 });
             }
         }
@@ -862,22 +863,18 @@ namespace KVMClient
             }
 
             // common code end
-
-            try
+            if (ast2100Decoder == null)
             {
-                ast2100Decoder.Decode(data, w, h);
+                ast2100Decoder = new Ast2100Decoder();
             }
-            catch
-            {
-
-            }
+            ast2100Decoder.Decode(data, w, h);
 
             // the encoder already converts color for us, and this codec outputs the full display
             // buffer for some reason.
 
 
             var bmpData2 = Framebuffer.Lock();
-            fixed(byte* ptr = ast2100Decoder.mOutBuffer)
+            fixed (byte* ptr = ast2100Decoder.mOutBuffer)
             {
                 Buffer.MemoryCopy(ptr, (void*)bmpData2.Address, bmpData2.RowBytes * bmpData2.Size.Height, ast2100Decoder.mOutBuffer.LongLength);
             }
@@ -918,7 +915,7 @@ namespace KVMClient
         private byte[] GetFramebufferUpdateRequestBytes(bool incremental, int x, int y, short width, short height)
         {
             //Debug.WriteLine("Sending FramebufferUpdate");
-            Console.WriteLine($"update region {x} {y} {width}x{height}");
+            // Console.WriteLine($"update region {x} {y} {width}x{height}");
             var p = new byte[10];
 
             if (width < 0 && height < 0)
@@ -1045,6 +1042,9 @@ namespace KVMClient
                 FramebufferWidth = w;
                 Dispatcher.UIThread.InvokeAsync(() =>
                 {
+                    if (Framebuffer != null)
+                        Framebuffer.Dispose();
+
                     this.Framebuffer = new WriteableBitmap(new Avalonia.PixelSize(w, h), new Avalonia.Vector(96.0, 96.0), PixelFormats.Rgba8888);
                     DisplayImage.Source = Framebuffer;
 
@@ -1328,10 +1328,12 @@ namespace KVMClient
         }
         private void Image_KeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
         {
+            Console.WriteLine("keydown:" + e.PhysicalKey);
             SendATENKbdEvent(ConvertKey(e.PhysicalKey), true);
         }
         private void Image_KeyUp(object? sender, Avalonia.Input.KeyEventArgs e)
         {
+            Console.WriteLine("keyup:" + e.PhysicalKey);
             SendATENKbdEvent(ConvertKey(e.PhysicalKey), false);
         }
         private void Exit_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -1392,6 +1394,58 @@ namespace KVMClient
                 }
                 Title = title;
             });
+        }
+
+        private void ScrollViewer_PointerWheelChanged(object? sender, Avalonia.Input.PointerWheelEventArgs e)
+        {
+            e.Handled = true;
+        }
+
+        private int mouseMask = 0;
+        private int mouseX = 0;
+        private int mouseY = 0;
+        private void Image_PointerMoved(object? sender, Avalonia.Input.PointerEventArgs e)
+        {
+            var p = e.GetCurrentPoint(DisplayImage);
+            mouseX = (int)p.Position.X;
+            mouseY = (int)p.Position.Y;
+
+            SendATENPointerEvent(mouseX, mouseY, mouseMask);
+        }
+
+        private void Image_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+        {
+            var mod = e.GetCurrentPoint(DisplayImage).Properties;
+            if (mod.IsLeftButtonPressed)
+                mouseMask |= 1 << 0;
+            if (mod.IsMiddleButtonPressed)
+                mouseMask |= 1 << 1;
+            if (mod.IsRightButtonPressed)
+                mouseMask |= 1 << 2;
+            if (mod.IsXButton1Pressed)
+                mouseMask |= 1 << 3;
+            if (mod.IsXButton1Pressed)
+                mouseMask |= 1 << 4;
+
+            SendATENPointerEvent(mouseX, mouseY, mouseMask);
+        }
+
+        private void Image_PointerReleased(object? sender, Avalonia.Input.PointerReleasedEventArgs e)
+        {
+            var mod = e.GetCurrentPoint(DisplayImage).Properties;
+            if (!mod.IsLeftButtonPressed)
+                mouseMask ^= 1 << 0;
+            if (!mod.IsMiddleButtonPressed)
+                mouseMask ^= 1 << 1;
+            if (!mod.IsRightButtonPressed)
+                mouseMask ^= 1 << 2;
+            if (!mod.IsXButton1Pressed)
+                mouseMask ^= 1 << 3;
+            if (!mod.IsXButton1Pressed)
+                mouseMask ^= 1 << 4;
+
+
+            SendATENPointerEvent(mouseX, mouseY, mouseMask);
         }
         #endregion
 
