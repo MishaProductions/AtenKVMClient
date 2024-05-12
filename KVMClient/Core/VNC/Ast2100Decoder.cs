@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 
 namespace KVMClient.Core.VNC
 {
@@ -55,16 +56,16 @@ namespace KVMClient.Core.VNC
         private byte[] mTileYuv = new byte[768];
         private int previous_DC = 0;
 
-        private ushort[] mRlimitTable = new ushort[5 * 256 + 128];
+        private ushort[] mRlimitTable = new ushort[704];
         private int mRlimitTable_index = 256;
-        private int[] mCrToR = new int[256 * 4];
-        private int[] mCbToB = new int[256 * 4];
-        private int[] mCrToG = new int[256 * 4];
-        private int[] mCbToG = new int[256 * 4];
+        private int[] mCrToR = new int[256];
+        private int[] mCbToB = new int[256];
+        private int[] mCrToG = new int[256];
+        private int[] mCbToG = new int[256];
         private int[] m_Y = new int[256];
         private double[][] mQT = new double[4][];
 
-        private int[] mColorBuf = new int[4 * 4];
+        private int[] mColorBuf = new int[4];
         private int[] decodeColorIndex = new int[4];
         //private int bitmapBits;
         private bool HT_init = false;
@@ -73,10 +74,10 @@ namespace KVMClient.Core.VNC
         private int[] mDCTCoeff = new int[384];
         private Ast2100HuffmanTable HT_ref = new Ast2100HuffmanTable();
 
-        private uint[] mDecode_Color_Index = new uint[4 * 4];
+        private uint[] mDecode_Color_Index = new uint[4];
         private uint mDecode_Color_BitMapBits = 0;
 
-        private uint[] mWorkspace = new uint[64 * 4];
+        private int[] mWorkspace = new int[64];
 
         public byte[] mOutBuffer = new byte[0];
         private int mTwb;
@@ -106,7 +107,8 @@ namespace KVMClient.Core.VNC
             return result;
         }
 
-
+        private int properWidth;
+        private int properHeight;
         public bool Decode(byte[] data, int width, int height)
         {
             this.mWidth = width;
@@ -121,7 +123,13 @@ namespace KVMClient.Core.VNC
             VQInitialize();
             set_tmp_width_height(mMode420, width, height, mTmpWidth, mTmpHeight);
 
-            mOutBuffer = new byte[width * height * 4];
+            if (properWidth != width || properHeight != height)
+            {
+                mOutBuffer = new byte[width * height * 4];
+
+                properWidth = width;
+                properHeight = height;
+            }
             mAdvanceScaleFactor = 16;
             mAdvanceScaleFactorUV = 16;
             mAdvanceSelector = 0;
@@ -153,7 +161,7 @@ namespace KVMClient.Core.VNC
             {
                 if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == JPEG_NO_SKIP_CODE)
                 {
-                    Console.WriteLine("JPEG_NO_SKIP_CODE");
+                    //Console.WriteLine("JPEG_NO_SKIP_CODE");
                     updatereadbuf(BLOCK_AST2100_START_LENGTH);
                     Decompress(this.mTxb, this.mTyb, this.mOutBuffer, 0);
                     MoveBlockIndex();
@@ -166,7 +174,9 @@ namespace KVMClient.Core.VNC
                 }
                 else if ((mCodebuf >>> 28 & BLOCK_HEADER_MASK) == JPEG_SKIP_CODE)
                 {
-                    Console.WriteLine("JPEG_SKIP_CODE");
+                    //Console.WriteLine("JPEG_SKIP_CODE");
+                    this.mTxb = (this.mCodebuf & 0xFF00000) >>> 20;
+                    this.mTyb = (this.mCodebuf & 0xFF000) >>> 12;
 
                     updatereadbuf(BLOCK_AST2100_SKIP_LENGTH);
                     Decompress(this.mTxb, this.mTyb, this.mOutBuffer, 0);
@@ -230,8 +240,8 @@ namespace KVMClient.Core.VNC
                 {
                     Console.WriteLine("VQ_SKIP_4_COLOR_CODE");
 
-                    this.mTxb = (this.mCodebuf & 267386880) >>> 20;
-                    this.mTyb = (this.mCodebuf & 1044480) >>> 12;
+                    this.mTxb = (this.mCodebuf & 0xFF00000) >>> 20;
+                    this.mTyb = (this.mCodebuf & 0xFF000) >>> 12;
                     this.updatereadbuf(BLOCK_AST2100_SKIP_LENGTH);
                     mDecode_Color_BitMapBits = 2;
                     this.VQ_ColorUpdate(4);
@@ -498,8 +508,13 @@ namespace KVMClient.Core.VNC
 
                         n = pos + i;
 
-                        var idsdac = (n << 2) + 2;
-                        pBgr[idsdac] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCbToB[cb]];
+                        // added by misha
+                        if (((n << 2) + 2) >= pBgr.Length)
+                        {
+                            break;
+                        }
+
+                        pBgr[(n << 2) + 2] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCbToB[cb]];
                         pBgr[(n << 2) + 1] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCbToG[cb] + this.mCrToG[cr]];
                         pBgr[(n << 2) + 0] = (byte)this.mRlimitTable[256 + this.m_Y[y] + this.mCrToR[cr]];
                         pBgr[(n << 2) + 3] = 255;
@@ -530,24 +545,27 @@ namespace KVMClient.Core.VNC
 
         private void IDCT_transform(int[] coef, byte[] data, int index, int nBlock)
         {
-            int FIX_1_082392200 = 277;
-            int FIX_1_414213562 = 362;
-            int FIX_1_847759065 = 473;
-            int FIX_2_613125930 = 669;
+            var FIX_1_082392200 = 277;
+            var FIX_1_414213562 = 362;
+            var FIX_1_847759065 = 473;
+            var FIX_2_613125930 = 669;
+
+
+
+            var inptr = coef;
+            var wsptr = new int[64];// this.mWorkspace;
+            int ctr, dcval;
+            var quantptr = this.mQT[nBlock];
+            var ptr_index = 0;
+
             int tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
             int tmp10, tmp11, tmp12, tmp13;
-            uint z5, z10, z11, z12, z13;
-            var inptr = coef;
-            var quantptr = this.mQT[nBlock];
-            var wsptr = this.mWorkspace;
-            byte[] outptr;
-            uint ctr, dcval;
-            var ptr_index = 0;
+            int z5, z10, z11, z12, z13;
             for (ctr = 0; ctr < 8; ctr++)
             {
                 if ((inptr[index + ctr + 8] | inptr[index + ctr + 16] | inptr[index + ctr + 24] | inptr[index + ctr + 32] | inptr[index + ctr + 40] | inptr[index + ctr + 48] | inptr[index + ctr + 56]) == 0)
                 {
-                    dcval = (uint)(4294967295 & inptr[index + ctr] * (int)quantptr[ctr] >> 16);
+                    dcval = (int)(((int)(inptr[index + ctr] * quantptr[ctr]) >> 16));
                     wsptr[ctr] = dcval;
                     wsptr[ctr + 8] = dcval;
                     wsptr[ctr + 16] = dcval;
@@ -558,84 +576,88 @@ namespace KVMClient.Core.VNC
                     wsptr[ctr + 56] = dcval;
                     continue;
                 }
-                tmp0 = inptr[index + ctr] * (int)quantptr[ctr] >> 16;
-                tmp1 = inptr[index + ctr + 16] * (int)quantptr[ctr + 16] >> 16;
-                tmp2 = inptr[index + ctr + 32] * (int)quantptr[ctr + 32] >> 16;
-                tmp3 = inptr[index + ctr + 48] * (int)quantptr[ctr + 48] >> 16;
+                tmp0 = (int)(inptr[index + ctr] * quantptr[ctr]) >> 16;
+                tmp1 = (int)(inptr[index + ctr + 16] * quantptr[ctr + 16]) >> 16;
+                tmp2 = (int)(inptr[index + ctr + 32] * quantptr[ctr + 32]) >> 16;
+                tmp3 = (int)(inptr[index + ctr + 48] * quantptr[ctr + 48]) >> 16;
                 tmp10 = tmp0 + tmp2;
                 tmp11 = tmp0 - tmp2;
                 tmp13 = tmp1 + tmp3;
-                tmp12 = this.MULTIPLY((uint)(tmp1 - tmp3), FIX_1_414213562) - tmp13;
+                tmp12 = this.MULTIPLY(tmp1 - tmp3, FIX_1_414213562) - tmp13;
                 tmp0 = tmp10 + tmp13;
                 tmp3 = tmp10 - tmp13;
                 tmp1 = tmp11 + tmp12;
                 tmp2 = tmp11 - tmp12;
-                tmp4 = inptr[index + ctr + 8] * (int)quantptr[ctr + 8] >> 16;
-                tmp5 = inptr[index + ctr + 24] * (int)quantptr[ctr + 24] >> 16;
-                tmp6 = inptr[index + ctr + 40] * (int)quantptr[ctr + 40] >> 16;
-                tmp7 = inptr[index + ctr + 56] * (int)quantptr[ctr + 56] >> 16;
-                z13 = (uint)(tmp6 + tmp5);
-                z10 = (uint)(tmp6 - tmp5);
-                z11 = (uint)(tmp4 + tmp7);
-                z12 = (uint)(tmp4 - tmp7);
-                tmp7 = (int)(z11 + z13);
+                tmp4 = (int)(inptr[index + ctr + 8] * quantptr[ctr + 8]) >> 16;
+                tmp5 = (int)(inptr[index + ctr + 24] * quantptr[ctr + 24]) >> 16;
+                tmp6 = (int)(inptr[index + ctr + 40] * quantptr[ctr + 40]) >> 16;
+                tmp7 = (int)(inptr[index + ctr + 56] * quantptr[ctr + 56]) >> 16;
+                z13 = tmp6 + tmp5;
+                z10 = tmp6 - tmp5;
+                z11 = tmp4 + tmp7;
+                z12 = tmp4 - tmp7;
+                tmp7 = z11 + z13;
                 tmp11 = this.MULTIPLY(z11 - z13, FIX_1_414213562);
-                z5 = (uint)this.MULTIPLY(z10 + z12, FIX_1_847759065);
-                tmp10 = (int)(this.MULTIPLY(z12, FIX_1_082392200) - z5);
-                tmp12 = (int)(this.MULTIPLY(z10, -FIX_2_613125930) + z5);
+                z5 = this.MULTIPLY(z10 + z12, FIX_1_847759065);
+                tmp10 = this.MULTIPLY(z12, FIX_1_082392200) - z5;
+                tmp12 = this.MULTIPLY(z10, -FIX_2_613125930) + z5;
                 tmp6 = tmp12 - tmp7;
                 tmp5 = tmp11 - tmp6;
                 tmp4 = tmp10 + tmp5;
-                wsptr[ctr] = (uint)(tmp0 + tmp7);
-                wsptr[ctr + 56] = (uint)(tmp0 - tmp7);
-                wsptr[ctr + 8] = (uint)(tmp1 + tmp6);
-                wsptr[ctr + 48] = (uint)(tmp1 - tmp6);
-                wsptr[ctr + 16] = (uint)(tmp2 + tmp5);
-                wsptr[ctr + 40] = (uint)(tmp2 - tmp5);
-                wsptr[ctr + 32] = (uint)(tmp3 + tmp4);
-                wsptr[ctr + 24] = (uint)(tmp3 - tmp4);
+                wsptr[ctr] = (int)(tmp0 + tmp7);
+                wsptr[ctr + 56] = (int)(tmp0 - tmp7);
+                wsptr[ctr + 8] = (int)(tmp1 + tmp6);
+                wsptr[ctr + 48] = (int)(tmp1 - tmp6);
+                wsptr[ctr + 16] = (int)(tmp2 + tmp5);
+                wsptr[ctr + 40] = (int)(tmp2 - tmp5);
+                wsptr[ctr + 32] = (int)(tmp3 + tmp4);
+                wsptr[ctr + 24] = (int)(tmp3 - tmp4);
             }
-            outptr = data;
-            uint outptr_index;
+
+
+            var outptr = data;
+            int outptr_index;
             for (ctr = 0; ctr < 8; ctr++)
             {
                 outptr_index = ctr * 8;
-                tmp10 = (int)(wsptr[outptr_index + 0] + wsptr[outptr_index + 4]);
+                tmp10 = (wsptr[outptr_index + 0] + wsptr[outptr_index + 4]);
                 tmp11 = (int)(wsptr[outptr_index + 0] - wsptr[outptr_index + 4]);
-                tmp13 = (int)(wsptr[outptr_index + 2] + wsptr[outptr_index + 6]);
-                tmp12 = this.MULTIPLY(wsptr[outptr_index + 2] - wsptr[outptr_index + 6], FIX_1_414213562) - tmp13;
+                tmp13 = (wsptr[outptr_index + 2] + wsptr[outptr_index + 6]);
+                tmp12 = (int)MULTIPLY((int)(wsptr[outptr_index + 2] - wsptr[outptr_index + 6]), FIX_1_414213562) - tmp13;
                 tmp0 = tmp10 + tmp13;
                 tmp3 = tmp10 - tmp13;
                 tmp1 = tmp11 + tmp12;
                 tmp2 = tmp11 - tmp12;
-                z13 = wsptr[outptr_index + 5] + wsptr[outptr_index + 3];
-                z10 = wsptr[outptr_index + 5] - wsptr[outptr_index + 3];
-                z11 = wsptr[outptr_index + 1] + wsptr[outptr_index + 7];
-                z12 = wsptr[outptr_index + 1] - wsptr[outptr_index + 7];
-                tmp7 = (int)(z11 + z13);
-                tmp11 = this.MULTIPLY((uint)(z11 - z13), FIX_1_414213562);
-                z5 = (uint)(this.MULTIPLY((uint)(z10 + z12), FIX_1_847759065));
-                tmp10 = (int)(this.MULTIPLY((uint)z12, FIX_1_082392200) - z5);
-                tmp12 = (int)(this.MULTIPLY((uint)z10, -FIX_2_613125930) + z5);
+                z13 = (int)(wsptr[outptr_index + 5] + wsptr[outptr_index + 3]);
+                z10 = (int)(wsptr[outptr_index + 5] - wsptr[outptr_index + 3]);
+                z11 = (int)(wsptr[outptr_index + 1] + wsptr[outptr_index + 7]);
+                z12 = (int)(wsptr[outptr_index + 1] - wsptr[outptr_index + 7]);
+                tmp7 = z11 + z13;
+                tmp11 = (int)this.MULTIPLY((int)z11 - (int)z13, FIX_1_414213562);
+                z5 = (int)this.MULTIPLY((int)z10 + (int)z12, FIX_1_847759065);
+                tmp10 = (int)this.MULTIPLY((int)z12, FIX_1_082392200) - z5;
+                tmp12 = (int)this.MULTIPLY((int)z10, -FIX_2_613125930) + z5;
                 tmp6 = tmp12 - tmp7;
                 tmp5 = tmp11 - tmp6;
                 tmp4 = tmp10 + tmp5;
-                outptr[index + outptr_index + 0] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp0 + (uint)tmp7), 3) & 1023];
-                outptr[index + outptr_index + 7] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp0 - (uint)tmp7), 3) & 1023];
-                outptr[index + outptr_index + 1] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp1 + (uint)tmp6), 3) & 1023];
-                outptr[index + outptr_index + 6] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp1 - (uint)tmp6), 3) & 1023];
-                outptr[index + outptr_index + 2] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp2 + (uint)tmp5), 3) & 1023];
-                outptr[index + outptr_index + 5] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp2 - (uint)tmp5), 3) & 1023];
-                outptr[index + outptr_index + 4] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp3 + (uint)tmp4), 3) & 1023];
-                outptr[index + outptr_index + 3] = (byte)this.mRlimitTable[384 + IDESCALE((uint)((uint)tmp3 - (uint)tmp4), 3) & 1023];
+
+                outptr[index + outptr_index + 0] = (byte)this.mRlimitTable[384 + IDESCALE(tmp0 + tmp7, 3) & 1023];
+                outptr[index + outptr_index + 7] = (byte)this.mRlimitTable[384 + IDESCALE(tmp0 - tmp7, 3) & 1023];
+                outptr[index + outptr_index + 1] = (byte)this.mRlimitTable[384 + IDESCALE(tmp1 + tmp6, 3) & 1023];
+                outptr[index + outptr_index + 6] = (byte)this.mRlimitTable[384 + IDESCALE(tmp1 - tmp6, 3) & 1023];
+                outptr[index + outptr_index + 2] = (byte)this.mRlimitTable[384 + IDESCALE(tmp2 + tmp5, 3) & 1023];
+                outptr[index + outptr_index + 5] = (byte)this.mRlimitTable[384 + IDESCALE(tmp2 - tmp5, 3) & 1023];
+                outptr[index + outptr_index + 4] = (byte)this.mRlimitTable[384 + IDESCALE(tmp3 + tmp4, 3) & 1023];
+                outptr[index + outptr_index + 3] = (byte)this.mRlimitTable[384 + IDESCALE(tmp3 - tmp4, 3) & 1023];
             }
+
         }
 
-        private int MULTIPLY(uint vari, int cons)
+        private int MULTIPLY(int vari, int cons)
         {
-            return (int)(vari * cons >> 8);
+            return (int)((vari * cons) >> 8);
         }
-        private int IDESCALE(uint x, uint n)
+        private int IDESCALE(int x, uint n)
         {
             return (int)x >> (int)n;
         }
@@ -811,7 +833,7 @@ namespace KVMClient.Core.VNC
             int[] tempQT = new int[64];
             if (this.mMapping == 1)
             {
-                switch (this.mAdvanceSelector)
+                switch (this.mUVSelector)
                 {
                     case 0:
                         std_chrominance_qt = Tbl_000Y;
@@ -841,7 +863,7 @@ namespace KVMClient.Core.VNC
             }
             else
             {
-                switch (this.mAdvanceSelector)
+                switch (this.mUVSelector)
                 {
                     case 0:
                         std_chrominance_qt = Tbl_000UV;
@@ -866,6 +888,18 @@ namespace KVMClient.Core.VNC
                         break;
                     case 7:
                         std_chrominance_qt = Tbl_100UV;
+                        break;
+                    case 8:
+                        std_chrominance_qt = Tbl_Q08UV;
+                        break;
+                    case 9:
+                        std_chrominance_qt = Tbl_Q09UV;
+                        break;
+                    case 10:
+                        std_chrominance_qt = Tbl_Q10UV;
+                        break;
+                    case 11:
+                        std_chrominance_qt = Tbl_Q11UV;
                         break;
                 }
             }
@@ -1132,12 +1166,12 @@ namespace KVMClient.Core.VNC
                 this.mRlimitTable[j] = 0;
             for (j = 0; j < 256; j++)
                 this.mRlimitTable[this.mRlimitTable_index + j] = j;
-            for (j = 256; j < 640; j++)
+            for (j = 256; j < mRlimitTable.Length - mRlimitTable_index; j++)
                 this.mRlimitTable[this.mRlimitTable_index + j] = 255;
-            for (j = 0; j < 384; j++)
-                this.mRlimitTable[this.mRlimitTable_index + j + 640] = 0;
-            for (j = 0; j < 128; j++)
-                this.mRlimitTable[this.mRlimitTable_index + j + 1024] = j;
+            //for (j = 0; j < 384; j++)
+            //    this.mRlimitTable[this.mRlimitTable_index + j + 640] = 0;
+            //for (j = 0; j < 128; j++)
+            //    this.mRlimitTable[this.mRlimitTable_index + j + 1024] = j;
         }
 
         private void InitJpegTable()
@@ -1206,7 +1240,7 @@ namespace KVMClient.Core.VNC
             var nScale = 1 << 16;
             var nHalf = nScale >> 1;
             double result = x * nScale + .5;
-            var r= (int)result;
+            var r = (int)result;
             return r;
         }
         private void Init_Color_Table()
