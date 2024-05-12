@@ -17,6 +17,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
@@ -857,7 +858,7 @@ namespace KVMClient
 
 
 
-            if (h != Framebuffer.PixelSize.Height | w != Framebuffer.PixelSize.Width)
+            if (Framebuffer == null || h != Framebuffer.PixelSize.Height | w != Framebuffer.PixelSize.Width)
             {
                 ResizeFB(w, h);
             }
@@ -1034,7 +1035,7 @@ namespace KVMClient
         }
         private void ResizeFB(int w, int h)
         {
-            if (FramebufferWidth != w || FramebufferHeight != h)
+            if (Framebuffer == null || FramebufferWidth != w || FramebufferHeight != h)
             {
                 Debug.WriteLine("framebuffer resize: " + w + "," + h);
 
@@ -1053,6 +1054,7 @@ namespace KVMClient
                 });
             }
         }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private unsafe void DrawImageToBuffer(byte[] sourceBytes, ILockedFramebuffer destination, int sourceWidth, int sourceHeight, int destinationX, int destinationY)
         {
             // TODO: misha: not sure why this occurs!
