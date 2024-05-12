@@ -664,7 +664,7 @@ namespace KVMClient.Core.VNC
         }
 
         /// <inheritdoc />
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return obj is VncRectangle && Equals((VncRectangle)obj);
         }

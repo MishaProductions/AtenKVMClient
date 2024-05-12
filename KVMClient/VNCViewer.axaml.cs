@@ -516,11 +516,8 @@ namespace KVMClient
             var i = 0;
             var j = 0;
             var user = "";
-            var index = 0;
             var ip = "0";
             var id = "";
-            var disconnect = 0;
-            var msg = "";
 
             while (cMsg[i] != 32 && i < 256 - j)
                 id += (char)cMsg[i++];
@@ -983,8 +980,6 @@ namespace KVMClient
         private void ConvertColor(byte[] OutArray, byte[] InArray, out int j)
         {
             j = 0;
-            try
-            {
                 if (FramebufferPixelFormat == null)
                     throw new Exception();
 
@@ -994,43 +989,37 @@ namespace KVMClient
                 var greenMult = (byte)(256 / FramebufferPixelFormat.GreenMax);
                 var blueMult = (byte)(256 / FramebufferPixelFormat.BlueMax);
 
-                for (int i = 0; i < InArray.Length; i += bpp)
-                {
-                    int pix = 0;
-                    for (int k = 0; k < bpp; k++)
-                    {
-                        if (FramebufferPixelFormat.IsLittleEndian)
-                        {
-                            //default
-                            pix = (InArray[i + k] << (k * 8)) | pix;
-                        }
-                        else
-                        {
-                            pix = (pix << 8) | InArray[i + k];
-                        }
-                    }
-
-                    var blue = (byte)(((pix >> FramebufferPixelFormat.BlueShift) & FramebufferPixelFormat.BlueMax) * blueMult);
-                    var red = (byte)(((pix >> FramebufferPixelFormat.RedShift) & FramebufferPixelFormat.RedMax) * redMult);
-                    var green = (byte)(((pix >> FramebufferPixelFormat.GreenShift) & FramebufferPixelFormat.GreenMax) * greenMult);
-
-
-                    //Red (actually blue)
-                    OutArray[j] = red;
-                    //Green
-                    OutArray[j + 1] = green;
-                    //Blue (actually red)
-                    OutArray[j + 2] = blue;
-                    //Alpha
-                    OutArray[j + 3] = 255;
-
-                    j += 4;
-                }
-            }
-            catch (Exception ex)
+            for (int i = 0; i < InArray.Length; i += bpp)
             {
+                int pix = 0;
+                for (int k = 0; k < bpp; k++)
+                {
+                    if (FramebufferPixelFormat.IsLittleEndian)
+                    {
+                        //default
+                        pix = (InArray[i + k] << (k * 8)) | pix;
+                    }
+                    else
+                    {
+                        pix = (pix << 8) | InArray[i + k];
+                    }
+                }
 
-                // MessageBox.Show(ex.ToString());
+                var blue = (byte)(((pix >> FramebufferPixelFormat.BlueShift) & FramebufferPixelFormat.BlueMax) * blueMult);
+                var red = (byte)(((pix >> FramebufferPixelFormat.RedShift) & FramebufferPixelFormat.RedMax) * redMult);
+                var green = (byte)(((pix >> FramebufferPixelFormat.GreenShift) & FramebufferPixelFormat.GreenMax) * greenMult);
+
+
+                //Red (actually blue)
+                OutArray[j] = red;
+                //Green
+                OutArray[j + 1] = green;
+                //Blue (actually red)
+                OutArray[j + 2] = blue;
+                //Alpha
+                OutArray[j + 3] = 255;
+
+                j += 4;
             }
         }
         private void ResizeFB(int w, int h)
@@ -1095,68 +1084,7 @@ namespace KVMClient
 
             }
         }
-        private CleanDirty GetCleanDirtyReset()
-        {
-            BoxInfo vp = new BoxInfo(0, 0, FramebufferWidth, FramebufferHeight);
-            RectInfo cr = _cleanRect;
 
-            BoxInfo cleanBox = new BoxInfo(cr.x1, cr.y1, cr.x2 - cr.x1 + 1, cr.y2 - cr.y1 + 1);
-            List<BoxInfo> DirtyBoxes = new List<BoxInfo>();
-
-            if (cr.x1 >= cr.x2 || cr.y1 >= cr.y2)
-            {
-                DirtyBoxes.Add(new BoxInfo(vp.x, vp.y, vp.w, vp.h));
-            }
-            else
-            {
-                var vx2 = vp.x + vp.w - 1;
-                var vy2 = vp.y + vp.h - 1;
-
-                if (vp.x < cr.x1)
-                {
-                    DirtyBoxes.Add(new BoxInfo(vp.x, vp.y, cr.x1 - vp.x, vp.h));
-                }
-                if (vx2 > cr.x2)
-                {
-                    DirtyBoxes.Add(new BoxInfo(cr.x2 + 1, vp.y, vx2 - cr.x2, vp.h));
-                }
-                if (vp.y < cr.y1)
-                {
-                    DirtyBoxes.Add(new BoxInfo(cr.x1, vp.y, cr.x2 - cr.x1 + 1, cr.y1 - vp.y));
-                }
-                if (vy2 > cr.y2)
-                {
-                    DirtyBoxes.Add(new BoxInfo(cr.x1, cr.y2 + 1, cr.x2 - cr.x1 + 1, vy2 - cr.y2));
-                }
-            }
-
-            _cleanRect = new RectInfo(vp.x, vp.y, vp.x + vp.w - 1, vp.y + vp.h - 1);
-            return new CleanDirty() { Clean = cleanBox, Dirty = DirtyBoxes };
-        }
-
-        private void SendUpdateRequests(CleanDirty info, int width, int height)
-        {
-            BoxInfo cb = info.Clean;
-            int dirtyLen = info.Dirty.Count;
-
-            List<byte> toSend = new List<byte>();
-
-            if (dirtyLen != 0)
-            {
-                var db = info.Dirty[dirtyLen - 1];
-                int w = db.w == 0 ? width : db.w;
-                int h = db.h == 0 ? height : db.h;
-                toSend.AddRange(GetFramebufferUpdateRequestBytes(false, db.x, db.y, (short)w, (short)h));
-            }
-            else if (cb.w > 0 && cb.h > 0)
-            {
-                int w = cb.w == 0 ? width : cb.w;
-                int h = cb.h == 0 ? height : cb.h;
-                toSend.AddRange(GetFramebufferUpdateRequestBytes(true, cb.x, cb.y, (short)w, (short)h));
-            }
-
-            c.Send(toSend.ToArray());
-        }
         #endregion
         #region UI
         private int ConvertKey(PhysicalKey physicalKey)

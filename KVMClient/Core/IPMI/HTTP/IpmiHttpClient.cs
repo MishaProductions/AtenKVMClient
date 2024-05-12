@@ -111,13 +111,13 @@ namespace KVMClient.Core.IPMI.HTTP
             {
                 if (item.Contains("CSRF_TOKEN"))
                 {
-                    var proper2 = item.Substring(42);
+                    var proper2 = item[42..];
                     proper2 = proper2.Replace("\");</script></body>", "");
 
                     var idx = proper2.IndexOf("\");/");
                     if (idx != -1)
                     {
-                        proper2 = proper2.Substring(0, idx);
+                        proper2 = proper2[..idx];
                     }
 
                     CSREFToken = proper2;
@@ -610,6 +610,7 @@ namespace KVMClient.Core.IPMI.HTTP
 
         public async Task<KvmSession?> GetKVMSession()
         {
+            if (client == null) { throw new Exception("client is null"); }
             KvmSession result = new KvmSession();
             var response2 = await client.GetAsync("https://" + Host + "/cgi/url_redirect.cgi?url_name=ikvm&url_type=jwsk");
             var x = await response2.Content.ReadAsStringAsync();
@@ -675,21 +676,14 @@ namespace KVMClient.Core.IPMI.HTTP
         public string Password { get; set; } = "";
     }
 
-    public class IpmiInfo
+    public class IpmiInfo(string tag, string firmware, string bmcMac)
     {
-        public string Tag { get; set; }
-        public string FirmwareString { get; set; }
-        public string BMCMac { get; set; }
-        public string KernelVersion { get; set; }
-        public string BiosVersion { get; set; }
-        public string BMCBldDate { get; set; }
-
-        public IpmiInfo(string tag, string firmware, string bmcMac)
-        {
-            Tag = tag;
-            FirmwareString = firmware;
-            BMCMac = bmcMac;
-        }
+        public string Tag { get; set; } = tag;
+        public string FirmwareString { get; set; } = firmware;
+        public string BMCMac { get; set; } = bmcMac;
+        public string KernelVersion { get; set; } = "";
+        public string BiosVersion { get; set; } = "";
+        public string BMCBldDate { get; set; } = "";
     }
     [XmlRoot(ElementName = "IPMI")]
     public class IPMI

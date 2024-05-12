@@ -762,7 +762,7 @@ namespace KVMClient.Core.VNC
             else
             {
                 this.mCodebuf = (this.mCodebuf << walks) | this.mNewbuf >>> (32 - walks);
-                this.mNewbuf = this.mNewbuf << walks;
+                this.mNewbuf <<= walks;
                 this.mNewbits = newbits;
             }
         }
