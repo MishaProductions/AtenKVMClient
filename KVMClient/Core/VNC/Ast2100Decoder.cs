@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 
 namespace KVMClient.Core.VNC
 {
@@ -88,7 +87,7 @@ namespace KVMClient.Core.VNC
         private int properHeight;
         public Ast2100Decoder()
         {
-            mNegPow2 = [ 0, -1, -3, -7, -15, -31, -63, -127, -255, -511, -1023, -2047, -4095, -8191, -16383, -32767 ];
+            mNegPow2 = [0, -1, -3, -7, -15, -31, -63, -127, -255, -511, -1023, -2047, -4095, -8191, -16383, -32767];
             for (var i = 0; i < 4; i++)
                 this.mQT[i] = new double[64];
         }

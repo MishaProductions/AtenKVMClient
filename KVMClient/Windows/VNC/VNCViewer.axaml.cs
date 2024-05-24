@@ -11,6 +11,7 @@ using FluentAvalonia.UI.Controls;
 using KVMClient.Core;
 using KVMClient.Core.IPMI.UDP;
 using KVMClient.Core.VNC;
+using KVMClient.Core.VNC.VirtualStorage;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -56,8 +57,13 @@ namespace KVMClient
         private long FrameEnd = 0;
         private bool useSSL = false;
         private int FPS = 0;
-        private RectInfo _cleanRect = new RectInfo(0, 0, -1, -1);
         private bool spamUpdateRequests = false;
+
+        private bool FBUpdateInProgress = false;
+
+        public VirtualStorageManager VirtualStorageManager = new VirtualStorageManager();
+        private VirtualMediaWindow VirtualMediaWindow;
+        private UsersWindow UsersWindow;
         public VNCViewer()
         {
             Host = "";
@@ -66,6 +72,8 @@ namespace KVMClient
             IpmiClient = new IpmiUdpClient();
             Framebuffer = new WriteableBitmap(new Avalonia.PixelSize(640, 480), new Avalonia.Vector(96.0, 96.0), PixelFormats.Rgba8888);
             DisplayImage.Source = Framebuffer;
+            VirtualMediaWindow = new VirtualMediaWindow(this);
+            UsersWindow = new UsersWindow(this);
         }
         public unsafe VNCViewer(ServerDef info, IpmiUdpClient client)
         {
@@ -75,6 +83,10 @@ namespace KVMClient
             Username = info.Username;
             Password = info.Password;
             IpmiClient = client;
+
+            // create windows
+            VirtualMediaWindow = new VirtualMediaWindow(this);
+            UsersWindow = new UsersWindow(this);
 
             // create framebuffer
             Framebuffer = new WriteableBitmap(new Avalonia.PixelSize(640, 480), new Avalonia.Vector(96.0, 96.0), PixelFormats.Rgba8888);
@@ -90,8 +102,31 @@ namespace KVMClient
             topLevel.KeyUp += Image_KeyUp;
         }
 
+        private Queue<byte[]> PacketQueue = new Queue<byte[]>();
+        private void ThreadPacketQueue()
+        {
+            while (true)
+            {
+                if (!c.isOpen)
+                    break;
+
+                if (!FBUpdateInProgress)
+                {
+                    byte[]? buf;
+                    while (PacketQueue.TryDequeue(out buf))
+                    {
+                        if (buf != null)
+                        {
+                            c.Send(buf);
+                        }
+                    }
+                }
+            }
+        }
+
         private async void VNCViewer_Loaded(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
+            VirtualStorageManager.SetAuthInfo(Host, Username, Password, true);
             await Connect();
         }
         private async Task Connect()
@@ -268,19 +303,22 @@ namespace KVMClient
             // lblStatus.Text = "Connected to " + ServerName;
 
             Connected = true;
-            SendUpdateRequests(GetCleanDirtyReset(), FramebufferWidth, FramebufferHeight);
+            SendFramebufferUpdateRequest(false, 0, 0, (short)FramebufferWidth, (short)FramebufferHeight);
 
 
-            this.threadMain = new Thread(this.ThreadMain);
-            this.threadMain.IsBackground = true;
-            this.threadMain.Start();
+            // threads
+            new Thread(ThreadPacketReader).Start();
+            new Thread(ThreadVideoSinger).Start();
+            new Thread(ThreadPacketQueue).Start();
 
-            Thread videoSinger = new Thread(ThreadVideoSinger);
-            videoSinger.Start();
             //prgLogin.Visible = false;
             #endregion
         }
 
+        /// <summary>
+        /// responsible for spamming FB update requests when no video signal
+        /// </summary>
+        /// <param name="obj"></param>
         private void ThreadVideoSinger(object? obj)
         {
             while (true)
@@ -294,7 +332,7 @@ namespace KVMClient
                 else
                 {
                     Console.WriteLine("ThreadVideoSinger");
-                    SendUpdateRequests(GetCleanDirtyReset(), FramebufferWidth, FramebufferHeight);
+                    SendFramebufferUpdateRequest(false, 0, 0, (short)FramebufferWidth, (short)FramebufferHeight);
                     Thread.Sleep(1000);
                 }
             }
@@ -405,7 +443,7 @@ namespace KVMClient
             c.Send(pw);
             c.Flush();
         }
-        private void ThreadMain()
+        private void ThreadPacketReader()
         {
             try
             {
@@ -599,7 +637,7 @@ namespace KVMClient
         private bool HandleFramebufferUpdate()
         {
             bool ret = true;
-
+            FBUpdateInProgress = true;
 
             // This is always read, which is not what noVNC does.
             c.ReceiveByte(); // padding
@@ -654,7 +692,7 @@ namespace KVMClient
                         throw new Exception("Unsupported encoding.");
                 }
             }
-
+            FBUpdateInProgress = false;
             return ret;
         }
         #region Encoding
@@ -854,12 +892,17 @@ namespace KVMClient
             }
 
 
-
-            if (Framebuffer == null || h != Framebuffer.PixelSize.Height | w != Framebuffer.PixelSize.Width)
+            try
             {
-                ResizeFB(w, h);
-            }
 
+                if (Framebuffer == null || h != Framebuffer.PixelSize.Height | w != Framebuffer.PixelSize.Width)
+                {
+                    ResizeFB(w, h);
+                }
+
+
+            }
+            catch { }
             // common code end
             if (ast2100Decoder == null)
             {
@@ -950,7 +993,9 @@ namespace KVMClient
             p[6] = (byte)(y);
             //VncUtility.EncodeUInt16BE(p, 2, (ushort)x);
             //VncUtility.EncodeUInt16BE(p, 4, (ushort)y);
-            this.c.Send(p);
+
+            //this.c.Send(p);
+            PacketQueue.Enqueue(p);
         }
         public void SendATENKbdEvent(int keysym, bool down)
         {
@@ -973,21 +1018,22 @@ namespace KVMClient
             p[7] = (byte)(keysym >> 8);
             p[8] = (byte)(keysym);
 
-            this.c.Send(p);
+            //this.c.Send(p);
+            PacketQueue.Enqueue(p);
         }
         #endregion
         #region FB Utils
         private void ConvertColor(byte[] OutArray, byte[] InArray, out int j)
         {
             j = 0;
-                if (FramebufferPixelFormat == null)
-                    throw new Exception();
+            if (FramebufferPixelFormat == null)
+                throw new Exception();
 
-                var bpp = 2;// FramebufferPixelFormat.BitsPerPixel;
+            var bpp = 2;// FramebufferPixelFormat.BitsPerPixel;
 
-                var redMult = (byte)(256 / FramebufferPixelFormat.RedMax);
-                var greenMult = (byte)(256 / FramebufferPixelFormat.GreenMax);
-                var blueMult = (byte)(256 / FramebufferPixelFormat.BlueMax);
+            var redMult = (byte)(256 / FramebufferPixelFormat.RedMax);
+            var greenMult = (byte)(256 / FramebufferPixelFormat.GreenMax);
+            var blueMult = (byte)(256 / FramebufferPixelFormat.BlueMax);
 
             for (int i = 0; i < InArray.Length; i += bpp)
             {
@@ -1037,9 +1083,6 @@ namespace KVMClient
 
                     this.Framebuffer = new WriteableBitmap(new Avalonia.PixelSize(w, h), new Avalonia.Vector(96.0, 96.0), PixelFormats.Rgba8888);
                     DisplayImage.Source = Framebuffer;
-
-                    // force redraw of entire screen as creating bitmap does not preserve pixels
-                    this._cleanRect = new RectInfo(0, 0, -1, -1);
                 });
             }
         }
@@ -1276,6 +1319,10 @@ namespace KVMClient
         }
         private void VNCViewer_Closed(object? sender, EventArgs e)
         {
+            VirtualMediaWindow.AllowClose = true;
+            VirtualMediaWindow.Close();
+            UsersWindow.AllowClose = true;
+            UsersWindow.Close();
             if (c != null)
             {
                 c.Close();
@@ -1376,6 +1423,16 @@ namespace KVMClient
 
 
             SendATENPointerEvent(mouseX, mouseY, mouseMask);
+        }
+
+        private void VirtualMediaManager_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            VirtualMediaWindow.Show();
+        }
+
+        private void Users_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            UsersWindow.Show();
         }
         #endregion
 

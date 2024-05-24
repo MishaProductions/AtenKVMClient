@@ -1,8 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace KVMClient.Core.IPMI
@@ -15,7 +12,7 @@ namespace KVMClient.Core.IPMI
         /// <param name="username"></param>
         /// <param name="password"></param>
         /// <returns>True if success, false if failure</returns>
-        Task<bool> Authenticate(string username, string password);
+        Task<bool> Authenticate(string host, string username, string password);
 
         Task<IpmiBoardInfoResult?> GetPlatformInfo();
         Task<Stream?> CapturePreview();

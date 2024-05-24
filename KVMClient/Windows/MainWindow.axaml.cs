@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using FluentAvalonia.UI.Controls;
 using FluentAvalonia.UI.Media.Animation;
-using HarfBuzzSharp;
 using KVMClient.Utils;
 
 namespace KVMClient

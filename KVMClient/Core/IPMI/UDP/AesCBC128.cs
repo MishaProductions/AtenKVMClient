@@ -1,6 +1,5 @@
 ﻿using System.IO;
 using System.Security.Cryptography;
-using System;
 
 namespace KVMClient.Core.IPMI.UDP
 {

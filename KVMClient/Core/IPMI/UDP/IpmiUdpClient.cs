@@ -1,17 +1,13 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
 using System.IO;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace KVMClient.Core.IPMI.UDP
 {
-    public class IpmiUdpClient
+    public class IpmiUdpClient : IIpmiInterfaceProvider
     {
         private UdpClient client = new UdpClient();
         //private IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 11000);
@@ -43,10 +39,10 @@ namespace KVMClient.Core.IPMI.UDP
 
         public static String[] RMCPPlusStatusCode = new String[] { "No errors (status code = 00h)", "Insufficient resources to create a session (status code = 01h)", "Invalid Session ID (status code = 02h)", "Invalid payload type (status code = 03h)", "Invalid authentication algorithm (status code = 04h)", "Invalid integrity algorithm (status code = 05h)", "No matching authentication payload (status code = 06h)", "No matching integrity payload (status code = 07h)", "Inactive Session ID (status code = 08h)", "Invalid role (status code = 09h)", "Unauthorized role or privilege level requested (status code = 0Ah)", "Insufficient resources to create a session at the requested role (status code = 0Bh)", "Invalid name length (status code = 0Ch)", "Unauthorized name (status code = 0Dh)", "Unauthorized GUID (status code = 0Eh). (GUID that BMC submitted in RAKP Message 2 was not accepted by remote console)", "Invalid integrity check value (status code = 0Fh)", "Invalid confidentiality algorithm (status code = 10h)", "No Cipher Suite match with proposed security algorithms (status code = 11h)", "Illegal or unrecognized parameter (status code = 12h)" };
 
-        public async Task<bool> Start(string ip, string user, string pw)
+        public async Task<bool> Authenticate(string ip, string username, string password)
         {
-            Username = user;
-            Password = pw;
+            Username = username;
+            Password = password;
             client.Connect(IPAddress.Parse(ip), 623);
 
             if (await OpenSession())
@@ -63,6 +59,15 @@ namespace KVMClient.Core.IPMI.UDP
             return false;
         }
 
+        public Task<IpmiBoardInfoResult?> GetPlatformInfo()
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<Stream?> CapturePreview()
+        {
+            throw new NotImplementedException();
+        }
 
         private async Task<IPMIMessage> setSessionPrivilegeLevelCommand(byte privilegeLevel)
         {

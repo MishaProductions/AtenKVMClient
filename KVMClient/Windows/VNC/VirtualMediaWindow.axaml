@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="300"
+        x:Class="KVMClient.VirtualMediaWindow"
+        Title="Virtual Media"
+	    Closing="Window_Closing"
+		Opened="Window_Opened"
+		CanResize="False"
+		Width="700"
+		Height="300"
+		>
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="auto"></RowDefinition>
+			<RowDefinition Height="auto"></RowDefinition>
+			<RowDefinition Height="*"></RowDefinition>
+		</Grid.RowDefinitions>
+
+		<TextBlock Grid.Row="0" x:Name="txtMountInfo">Loading mount info</TextBlock>
+		<TabControl Grid.Row="1" SelectionChanged="TabControl_SelectionChanged" x:Name="TabControl">
+			<TabControl.Items>
+				<TabItem Header="Device 1">
+					
+				</TabItem>
+				<TabItem Header="Device 2">
+
+				</TabItem>
+				<TabItem Header="Device 3">
+
+				</TabItem>
+			</TabControl.Items>
+		</TabControl>
+
+		<WrapPanel Grid.Row="2" Orientation="Vertical">
+			<WrapPanel Margin="5">
+				<TextBlock VerticalAlignment="Center" Margin="5">Device Type:</TextBlock>
+				<ComboBox x:Name="cmbDeviceType" Margin="5" SelectedIndex="0" SelectionChanged="DeviceType_SelectionChanged">
+					<ComboBox.Items>
+						<ComboBoxItem>None</ComboBoxItem>
+						<ComboBoxItem>ISO Image</ComboBoxItem>
+						<ComboBoxItem>IMG/IMA Image</ComboBoxItem>
+					</ComboBox.Items>
+				</ComboBox>
+			</WrapPanel>
+
+			<WrapPanel Margin="5">
+				<Button x:Name="btnChooseFile"  Click="ChooseFile_Click" Margin="5">Choose file</Button>
+				<TextBlock x:Name="txtFileName" VerticalAlignment="Center" Padding="5"></TextBlock>
+			</WrapPanel>
+			<WrapPanel Margin="5">
+				<Button x:Name="btnMount" Click="Mount_Click" Margin="5">Mount</Button>
+				<Button x:Name="btnUnmount" Click="Unmount_Click" Margin="5">Unmount</Button>
+			</WrapPanel>
+
+		</WrapPanel>
+	</Grid>
+</Window>

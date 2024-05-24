@@ -1,10 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Serialization;
@@ -13,7 +10,7 @@ namespace KVMClient.Core.IPMI.HTTP
 {
     public class IpmiHttpClient : IIpmiInterfaceProvider
     {
-        public readonly string Host;
+        public string Host;
         private static HttpClient? client;
 
         public string? SID;
@@ -54,13 +51,14 @@ namespace KVMClient.Core.IPMI.HTTP
         }
         private IpmiHttpClient() { Host = "localhost"; }
 
-        public async Task<bool> Authenticate(string Usernam, string Password)
+        public async Task<bool> Authenticate(string host, string Usernam, string Password)
         {
+            Host = host;
             var values = new Dictionary<string, string>
-  {
-      { "name", Usernam },
-      { "pwd", Password }
-  };
+            {
+                { "name", Usernam },
+                { "pwd", Password }
+            };
 
             var content = new FormUrlEncodedContent(values);
             if (client == null) throw new Exception("client is null");
@@ -628,7 +626,7 @@ namespace KVMClient.Core.IPMI.HTTP
                     {
                         var val = item.IndexOf("value=\"") + 7;
                         var end = item.IndexOf("\">");
-                        string sessionString = item.Substring(val, end-val);
+                        string sessionString = item.Substring(val, end - val);
                         return new KvmSession() { Username = sessionString, Password = "" };
                     }
                 }

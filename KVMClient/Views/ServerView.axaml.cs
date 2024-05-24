@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -10,11 +9,6 @@ using FluentAvalonia.UI.Navigation;
 using KVMClient.Core.IPMI.HTTP;
 using KVMClient.Core.IPMI.UDP;
 using System;
-using System.IO;
-using System.Net;
-using System.Net.Http;
-using System.Reflection.Metadata;
-using System.Security.Cryptography;
 using System.Threading.Tasks;
 
 namespace KVMClient;
@@ -26,6 +20,8 @@ public partial class ServerView : UserControl
     private string IP = "";
     private string Username = "";
     private string Password = "";
+    private bool ipmiLoadSuccessful = false;
+    private bool httpLoadSuccessful = false;
     public ServerView()
     {
         InitializeComponent();
@@ -73,7 +69,7 @@ public partial class ServerView : UserControl
             UpdateLoading(false, "Connecting");
 
             // If IPMI protocol works but http doesnt then dont show error dialogue
-            httpLoadSuccessful = await hclient.Authenticate(parameter.Username, parameter.Password);
+            httpLoadSuccessful = await hclient.Authenticate(parameter.IP, parameter.Username, parameter.Password);
             if (!httpLoadSuccessful && !ipmiLoadSuccessful)
             {
                 await new ContentDialog() { Content = "Error while loading content: Authentication failed. Check username and password. AMI (typically used in X8 motherboards) firmware is not supported.", PrimaryButtonText = "OK", Title = "Authentication failed" }.ShowAsync();
@@ -158,13 +154,12 @@ public partial class ServerView : UserControl
             UpdateLoading(true);
         }
     }
-    private bool ipmiLoadSuccessful = false;
-    private bool httpLoadSuccessful = false;
+
     private async Task LoadIpmi()
     {
         try
         {
-            var result = await iclient.Start(IP, Username, Password);
+            var result = await iclient.Authenticate(IP, Username, Password);
             if (result)
             {
                 ipmiLoadSuccessful = true;

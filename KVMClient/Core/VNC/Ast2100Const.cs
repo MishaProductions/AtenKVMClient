@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace KVMClient.Core.VNC
+﻿namespace KVMClient.Core.VNC
 {
     public partial class Ast2100Decoder
     {
