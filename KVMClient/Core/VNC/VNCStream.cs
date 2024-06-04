@@ -358,22 +358,6 @@ namespace KVMClient.Core.VNC
         }
 
         /// <summary>
-        /// Writes a <see cref="VncRectangle"/> to the current position in the stream and advances the position within the stream by 8 bytes.
-        /// </summary>
-        /// <param name="region">
-        /// The <see cref="VncRectangle"/> to write to the stream.
-        /// </param>
-        public void SendRectangle(VncRectangle region)
-        {
-            var buffer = new byte[8];
-            VncUtility.EncodeUInt16BE(buffer, 0, (ushort)region.X);
-            VncUtility.EncodeUInt16BE(buffer, 2, (ushort)region.Y);
-            VncUtility.EncodeUInt16BE(buffer, 4, (ushort)region.Width);
-            VncUtility.EncodeUInt16BE(buffer, 6, (ushort)region.Height);
-            Send(buffer);
-        }
-
-        /// <summary>
         /// Writes a <see cref="ushort"/> in big endian encoding to the current position in the stream and advances the position within the stream by two bytes.
         /// </summary>
         /// <param name="value">
